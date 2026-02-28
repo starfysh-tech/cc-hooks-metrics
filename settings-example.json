@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|Read|Glob|Grep|WebFetch|WebSearch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x $HOME/.claude/hooks/hook-metrics.sh ] && $HOME/.claude/hooks/hook-metrics.sh PostToolUse:audit-logger ~/.claude/hooks/audit-logger.sh || ~/.claude/hooks/audit-logger.sh",
+            "timeout": 2
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/hook-metrics.sh PostToolUse:mermaid-lint ~/.claude/hooks/mermaid-lint.sh",
+            "timeout": 35
+          }
+        ]
+      }
+    ]
+  }
+}

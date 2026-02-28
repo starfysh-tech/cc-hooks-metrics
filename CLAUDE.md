@@ -5,8 +5,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Running the report
 
 ```bash
-# Visual ANSI report (sections a–g)
+# Traffic-light summary + compact sections (~60-80 lines, default)
 ~/.claude/hooks/hooks-report.sh
+
+# Full report: traffic lights + compact sections + all 7 legacy detail sections
+~/.claude/hooks/hooks-report.sh --verbose
 
 # OTel-aligned JSON export
 ~/.claude/hooks/hooks-report.sh --export
@@ -36,14 +39,28 @@ The database path defaults to `~/.claude/hooks.db` and can be overridden with `C
 
 ## hooks-report.sh structure
 
-Seven section functions called from `main`: `section_health`, `section_failures`, `section_performance`, `section_usage`, `section_quality`, `section_projects`, `section_trends`.
+`assess_and_report()` runs first in all non-export modes. It renders a 2-column traffic-light layout (3 rows: Reliability+Performance / BrokenHooks+Regressions / ReviewGate solo) with a 24h run count + overhead subtitle, followed by an Action Items block for any non-green category. All green → "All clear" message instead. The closing `══════` border is printed by the main dispatch block, not by `assess_and_report()`.
+
+**Default mode** outputs traffic lights + 3 compact sections (~60-80 lines total). **`--verbose`** adds all 7 legacy detail sections after the compact ones. **`--export`** calls `export_json()` instead of any other functions and exits. JSON uses OTel naming: metric names `claude.hooks.*`, attributes `hook.step` / `vcs.repository`.
+
+Three compact section functions called in default + verbose mode (before verbose sections):
+- `section_perf_compact()` — Per-step performance table (last 7d), filtered to steps with avg ≥500ms OR configured timeout. Columns: step, runs, avg, max, timeout (bar+% or warning). Capped at 12 rows, sorted by total_ms DESC.
+- `section_wow_compact()` — 4-row WoW summary table (Runs/Failures/Fail rate/Overhead), compact failure trend lines (5 REGR + 3 FIXED max), latency regressions (top 3, 15% threshold + total_n≥5), and coverage gaps.
+- `section_projects_compact()` — Top 5 repos by overhead (last 7d), with fail rate column only when >0%. Excludes `codex-review` from failure counts.
+
+Seven legacy section functions called from `main` in `--verbose` mode only: `section_health`, `section_failures`, `section_performance`, `section_usage`, `section_quality`, `section_projects`, `section_trends`.
+
+Two summary helpers used by `assess_and_report`:
+- `_traffic_light label status [detail]` — one status row (✅/⚠️/❌)
+- `_action_item icon badge detail fix` — 2-line action item with `→` fix suggestion
+
+Formatting helper:
+- `_fmt_dur ms` — formats duration as "1.5s" if ≥1000ms, else "250ms"
 
 Three visual helpers used only in `section_trends`:
 - `_bar val max_val [width]` — proportional `█░` bar, default 30 chars
 - `_trend_badge type` — colored `[REGR]`/`[FIXED]`/`[GONE]`/`[NEW]`/`[SLOW]` prefix
 - `_pct_change cur prev polarity` — colored `+X.X%` with `lower_better`/`higher_better`/`neutral` polarity
-
-`--export` mode calls `export_json()` instead of the section functions and exits. JSON uses OTel naming: metric names `claude.hooks.*`, attributes `hook.step` / `vcs.repository`.
 
 ## Key conventions
 

@@ -20,12 +20,49 @@ YELLOW=$'\033[33m'
 RESET=$'\033[0m'
 BCYAN=$'\033[1;36m'
 
+_IMPACT_THRESHOLD_S=30  # cumulative seconds/week to flag a regression
+
 _hdr() {
   printf "\n${BCYAN}══════════════════════════════════════════════════════════════${RESET}\n"
   printf "${BCYAN}  %s${RESET}\n" "$1"
   printf "${BCYAN}══════════════════════════════════════════════════════════════${RESET}\n"
 }
 _sep() { printf "${CYAN}──────────────────────────────────────────────────────────────${RESET}\n"; }
+
+# _traffic_light label status [detail]  — one status line in the summary table
+_traffic_light() {
+  local label="$1" status="$2" detail="${3:-}"
+  local icon
+  case "$status" in
+    green)   icon="${GREEN}✅${RESET}" ;;
+    yellow)  icon="${YELLOW}⚠️ ${RESET}" ;;
+    red)     icon="${RED}❌${RESET}" ;;
+    *)       icon="⚠️ "; detail="${detail:-assessment failed}" ;;
+  esac
+  if [ -n "$detail" ]; then
+    printf "  %-16s %s  %s\n" "$label" "$icon" "$detail"
+  else
+    printf "  %-16s %s\n" "$label" "$icon"
+  fi
+}
+
+# _action_item icon badge detail fix  — 2-line action item block
+_action_item() {
+  local icon="$1" badge="$2" detail="$3" fix="$4"
+  printf "  %s %-10s %s\n" "$icon" "$badge" "$detail"
+  printf "     → %s\n\n" "$fix"
+}
+
+# _fmt_dur ms  — human-readable duration: "1.5s" above 1000ms, else "250ms"
+_fmt_dur() {
+  local ms=${1:-0}
+  ms=${ms%%.*}
+  if [ "${ms:-0}" -ge 1000 ] 2>/dev/null; then
+    awk -v m="$ms" 'BEGIN{printf "%.1fs", m/1000}'
+  else
+    printf "%sms" "$ms"
+  fi
+}
 
 # sqlite3 query with stdout output (unlike _db_exec which redirects to /dev/null)
 # No PRAGMA busy_timeout — it emits a result row that would corrupt pipe reads.
@@ -49,6 +86,480 @@ _timeout_for() {
     stop-checks)         echo 30000 ;;
     *)                   echo 0     ;;
   esac
+}
+
+# ─── Traffic-light summary + action items ─────────────────────────────────────
+assess_and_report() {
+  # Defensive init — any var still "unknown" after assessment renders as failed
+  for _cat in REL TIMEOUT BROKEN REGR REVIEW; do
+    eval "_${_cat}_status=unknown"
+    eval "_${_cat}_detail=''"
+  done
+
+  # ── Query 1: 4-category UNION ────────────────────────────────────────────────
+  _rel_total=0; _rel_failures=0; _rel_fail_rate=0
+  _broken_count=0; _broken_steps=0
+  _review_runs=0; _review_findings=0
+  _regr_count=0
+
+  while IFS='|' read -r cat v1 v2 v3; do
+    case "$cat" in
+      reliability) _rel_total=${v1:-0}; _rel_failures=${v2:-0}; _rel_fail_rate=${v3:-0} ;;
+      broken)      _broken_count=${v1:-0}; _broken_steps=${v2:-0} ;;
+      review)      _review_runs=${v1:-0}; _review_findings=${v2:-0} ;;
+      regressions) _regr_count=${v1:-0} ;;
+    esac
+  done < <(_q "
+SELECT 'reliability',
+  COUNT(*),
+  SUM(CASE WHEN exit_code != 0 AND step NOT IN ('codex-review') THEN 1 ELSE 0 END),
+  ROUND(100.0 * SUM(CASE WHEN exit_code != 0 AND step NOT IN ('codex-review') THEN 1 ELSE 0 END)
+        / NULLIF(COUNT(*), 0), 1)
+FROM hook_metrics WHERE ts > datetime('now', '-1 day')
+UNION ALL
+SELECT 'broken',
+  SUM(CASE WHEN exit_code = 127 THEN 1 ELSE 0 END),
+  COUNT(DISTINCT CASE WHEN exit_code = 127 THEN step END),
+  NULL
+FROM hook_metrics WHERE ts > datetime('now', '-7 days')
+UNION ALL
+SELECT 'review',
+  SUM(CASE WHEN step = 'codex-review' THEN 1 ELSE 0 END),
+  SUM(CASE WHEN step = 'codex-review' AND exit_code != 0 THEN 1 ELSE 0 END),
+  NULL
+FROM hook_metrics WHERE ts > datetime('now', '-7 days')
+UNION ALL
+SELECT 'regressions', COUNT(*), NULL, NULL
+FROM (
+  SELECT step,
+    AVG(CASE WHEN ts > datetime('now','-7 days') THEN duration_ms END) AS cur_avg,
+    AVG(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN duration_ms END) AS prev_avg,
+    SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END) AS cur_runs,
+    SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END) AS prev_runs
+  FROM hook_metrics WHERE ts > datetime('now','-14 days') AND duration_ms > 0
+  GROUP BY step
+  HAVING cur_avg IS NOT NULL AND prev_avg IS NOT NULL
+    AND cur_avg > prev_avg
+    AND CAST(cur_avg - prev_avg AS REAL) / NULLIF(prev_avg, 0) > 0.15
+    AND (cur_runs + prev_runs) >= 5
+    AND (cur_avg - prev_avg) * cur_runs / 1000.0 >= ${_IMPACT_THRESHOLD_S}
+)")
+
+  # ── Assess reliability ───────────────────────────────────────────────────────
+  _rf=${_rel_failures%%.*}
+  if   [ "${_rf:-0}" -eq 0 ] 2>/dev/null; then
+    _REL_status=green
+  elif [ "${_rf:-0}" -lt 10 ] 2>/dev/null && awk -v r="${_rel_fail_rate:-0}" 'BEGIN{exit (r+0 < 5) ? 0 : 1}' 2>/dev/null; then
+    _REL_status=yellow; _REL_detail="${_rel_failures:-0} failures (${_rel_fail_rate:-0}%)"
+  else
+    _REL_status=red;    _REL_detail="${_rel_failures:-0} failures (${_rel_fail_rate:-0}%)"
+  fi
+
+  # ── Assess broken hooks ──────────────────────────────────────────────────────
+  _bc=${_broken_count%%.*}
+  if   [ "${_bc:-0}" -eq 0 ] 2>/dev/null; then
+    _BROKEN_status=green
+  elif [ "${_bc:-0}" -lt 10 ] 2>/dev/null; then
+    _BROKEN_status=yellow; _BROKEN_detail="${_broken_count:-0} exit-127 runs (${_broken_steps:-0} steps)"
+  else
+    _BROKEN_status=red;    _BROKEN_detail="${_broken_count:-0} exit-127 runs (${_broken_steps:-0} steps)"
+  fi
+
+  # ── Assess regressions ───────────────────────────────────────────────────────
+  _rc=${_regr_count%%.*}
+  if   [ "${_rc:-0}" -eq 0 ] 2>/dev/null; then
+    _REGR_status=green
+  elif [ "${_rc:-0}" -le 2 ] 2>/dev/null; then
+    _REGR_status=yellow; _REGR_detail="${_regr_count:-0} latency regressions adding >${_IMPACT_THRESHOLD_S}s/week"
+  else
+    _REGR_status=red;    _REGR_detail="${_regr_count:-0} latency regressions adding >${_IMPACT_THRESHOLD_S}s/week"
+  fi
+
+  # ── Assess review gate ───────────────────────────────────────────────────────
+  _rr=${_review_runs%%.*}
+  if [ "${_rr:-0}" -gt 0 ] 2>/dev/null; then
+    _rpct=$(awk -v f="${_review_findings:-0}" -v r="${_review_runs:-0}" \
+      'BEGIN{if(r==0)print 0;else printf "%.0f",f/r*100}')
+    _REVIEW_status=green; _REVIEW_detail="${_rpct}% finding rate (${_review_runs:-0} runs)"
+  else
+    _REVIEW_status=yellow; _REVIEW_detail="no data"
+  fi
+
+  # ── Query 2: Timeout assessment (per-step, calls _timeout_for) ───────────────
+  _worst_pct=0; _n_over=0
+  while IFS='|' read -r step maxd; do
+    limit=$(_timeout_for "$step")
+    [ "${limit:-0}" -le 0 ] 2>/dev/null && continue
+    pct=$(awk -v m="${maxd:-0}" -v t="${limit}" 'BEGIN{printf "%.0f", m/t*100}')
+    pct_i=${pct%%.*}
+    [ "${pct_i:-0}" -ge 100 ] 2>/dev/null && _n_over=$(( _n_over + 1 ))
+    [ "${pct_i:-0}" -gt "${_worst_pct:-0}" ] 2>/dev/null && _worst_pct=$pct_i
+  done < <(_q "
+SELECT step, MAX(duration_ms) FROM hook_metrics
+WHERE ts > datetime('now', '-7 days') AND duration_ms > 0
+GROUP BY step;")
+
+  if   [ "${_worst_pct:-0}" -ge 100 ] 2>/dev/null; then
+    _TIMEOUT_status=red;    _TIMEOUT_detail="${_n_over} hooks exceeding timeout limits"
+  elif [ "${_worst_pct:-0}" -ge 80 ] 2>/dev/null; then
+    _TIMEOUT_status=yellow; _TIMEOUT_detail="hooks approaching timeout limits"
+  else
+    _TIMEOUT_status=green
+  fi
+
+  # ── 24h overhead for subtitle ────────────────────────────────────────────────
+  _24h_overhead=$(_q "SELECT COALESCE(SUM(duration_ms),0) FROM hook_metrics WHERE ts > datetime('now','-1 day')")
+  _24h_overhead_min=$(awk -v ms="${_24h_overhead:-0}" 'BEGIN{printf "%.0f", ms/60000}')
+
+  # ── Render traffic light table ───────────────────────────────────────────────
+  _hdr "Hooks Status"
+  printf "  ${CYAN}24h: %s runs | %s min overhead${RESET}\n\n" "${_rel_total:-0}" "${_24h_overhead_min:-0}"
+
+  # Helper: build one cell "label icon [detail]" padded to width 38
+  _tl_cell() {
+    local label="$1" status="$2" detail="${3:-}" icon
+    case "$status" in
+      green)  icon="${GREEN}✅${RESET}" ;;
+      yellow) icon="${YELLOW}⚠️ ${RESET}" ;;
+      red)    icon="${RED}❌${RESET}" ;;
+      *)      icon="⚠️ "; detail="${detail:-assessment failed}" ;;
+    esac
+    if [ -n "$detail" ]; then
+      printf "  %-16s %s  %-18s" "$label" "$icon" "$detail"
+    else
+      printf "  %-16s %s  %-18s" "$label" "$icon" ""
+    fi
+  }
+
+  # Row 1: Reliability | Performance
+  _tl_cell "Reliability"  "$_REL_status"    "$_REL_detail"
+  _tl_cell "Performance"  "$_TIMEOUT_status" "$_TIMEOUT_detail"
+  printf "\n"
+  # Row 2: Broken Hooks | Regressions
+  _tl_cell "Broken Hooks" "$_BROKEN_status"  "$_BROKEN_detail"
+  _tl_cell "Regressions"  "$_REGR_status"    "$_REGR_detail"
+  printf "\n"
+  # Row 3: Review Gate (solo)
+  _tl_cell "Review Gate"  "$_REVIEW_status"  "$_REVIEW_detail"
+  printf "\n"
+
+  # ── Action items ─────────────────────────────────────────────────────────────
+  _any_issues=false
+  for _s in "$_REL_status" "$_TIMEOUT_status" "$_BROKEN_status" "$_REGR_status" "$_REVIEW_status"; do
+    [ "$_s" != "green" ] && _any_issues=true && break
+  done
+
+  if $_any_issues; then
+    printf "\n"; _sep
+    printf "  ${BOLD}Action Items${RESET}\n"; _sep
+    printf "\n"
+
+    # Track actioned steps to suppress duplicate entries in lower-priority categories
+    _actioned_steps=" "
+
+    # Timeout action items (re-query same data for detail output)
+    if [ "$_TIMEOUT_status" != "green" ]; then
+      while IFS='|' read -r step maxd; do
+        limit=$(_timeout_for "$step")
+        [ "${limit:-0}" -le 0 ] 2>/dev/null && continue
+        pct=$(awk -v m="${maxd:-0}" -v t="${limit}" 'BEGIN{printf "%.0f", m/t*100}')
+        pct_i=${pct%%.*}
+        [ "${pct_i:-0}" -ge 100 ] 2>/dev/null || continue
+        _action_item "❌" "TIMEOUT" "${step} max ${maxd}ms vs ${limit}ms limit (${pct}%)" \
+          "Increase timeout or optimize script"
+        _actioned_steps="${_actioned_steps}${step} "
+      done < <(_q "
+SELECT step, MAX(duration_ms) FROM hook_metrics
+WHERE ts > datetime('now', '-7 days') AND duration_ms > 0
+GROUP BY step;")
+    fi
+
+    # Broken hooks detail
+    if [ "$_BROKEN_status" != "green" ]; then
+      while IFS='|' read -r step cmd count; do
+        _action_item "❌" "BROKEN" "${step} — ${count} exit-127 (script path missing)" \
+          "Verify ${cmd} exists at configured path"
+        _actioned_steps="${_actioned_steps}${step} "
+      done < <(_q "
+SELECT step,
+  COALESCE(NULLIF(TRIM(cmd),''), '(unknown)') AS cmd,
+  COUNT(*) AS cnt
+FROM hook_metrics
+WHERE exit_code = 127 AND ts > datetime('now', '-7 days')
+GROUP BY step, cmd
+ORDER BY cnt DESC
+LIMIT 5;")
+    fi
+
+    # Regression detail — skip steps already flagged as TIMEOUT
+    if [ "$_REGR_status" != "green" ]; then
+      while IFS='|' read -r step ca pa impact_s; do
+        case " $_actioned_steps " in *" $step "*) continue ;; esac
+        ca_i=${ca%%.*}; pa_i=${pa%%.*}; impact_i=${impact_s%%.*}
+        # Use ms display for sub-second averages; seconds otherwise
+        if [ "${ca_i:-0}" -lt 1000 ] 2>/dev/null; then
+          delta_disp=$(awk -v c="${ca_i:-0}" -v p="${pa_i:-0}" 'BEGIN{printf "%.0f",c-p}')ms
+          ca_disp="${ca_i:-0}ms"; pa_disp="${pa_i:-0}ms"
+        else
+          delta_disp=$(awk -v c="${ca_i:-0}" -v p="${pa_i:-0}" 'BEGIN{printf "%.0f",(c-p)/1000}')s
+          ca_disp=$(awk -v c="${ca_i:-0}" 'BEGIN{printf "%.0f",c/1000}')s
+          pa_disp=$(awk -v p="${pa_i:-0}" 'BEGIN{printf "%.0f",p/1000}')s
+        fi
+        _action_item "⚠️ " "SLOW" \
+          "${step} avg +${delta_disp} (${pa_disp}→${ca_disp}), ${impact_i:-0}s cumulative" \
+          "Investigate latency increase"
+      done < <(_q "
+SELECT step,
+  ROUND(AVG(CASE WHEN ts > datetime('now','-7 days') THEN duration_ms END), 0) AS cur_avg,
+  ROUND(AVG(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN duration_ms END), 0) AS prev_avg,
+  ROUND(SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END) *
+    (AVG(CASE WHEN ts > datetime('now','-7 days') THEN duration_ms END) -
+     AVG(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN duration_ms END)) / 1000.0, 0) AS impact_s
+FROM hook_metrics
+WHERE ts > datetime('now','-14 days') AND duration_ms > 0
+GROUP BY step
+HAVING cur_avg IS NOT NULL AND prev_avg IS NOT NULL
+  AND cur_avg > prev_avg
+  AND CAST(cur_avg - prev_avg AS REAL) / NULLIF(prev_avg, 0) > 0.15
+  AND (SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END) +
+       SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END)) >= 5
+  AND impact_s >= ${_IMPACT_THRESHOLD_S}
+ORDER BY impact_s DESC
+LIMIT 5;")
+    fi
+
+    # Reliability detail — skip steps already flagged as BROKEN or TIMEOUT
+    if [ "$_REL_status" != "green" ]; then
+      while IFS='|' read -r step count; do
+        case " $_actioned_steps " in *" $step "*) continue ;; esac
+        fail_word=$([ "${count:-0}" -eq 1 ] 2>/dev/null && echo "failure" || echo "failures")
+        _action_item "❌" "FAIL" "${step} — ${count} ${fail_word} (24h)" \
+          "Investigate hook failures"
+      done < <(_q "
+SELECT step, COUNT(*) AS cnt
+FROM hook_metrics
+WHERE exit_code != 0 AND step NOT IN ('codex-review')
+  AND ts > datetime('now', '-1 day')
+GROUP BY step
+ORDER BY cnt DESC
+LIMIT 5;")
+    fi
+
+  else
+    printf "\n"
+    printf "  ${GREEN}All clear — no action items.${RESET}\n"
+  fi
+
+}
+
+# ─── Compact: Performance (last 7d) ───────────────────────────────────────────
+section_perf_compact() {
+  _sep
+  _7d_runs=$(_q "SELECT COUNT(*) FROM hook_metrics WHERE ts > datetime('now','-7 days')")
+  _7d_runs=${_7d_runs%%.*}
+  _7d_overhead=$(_q "SELECT COALESCE(SUM(duration_ms),0) FROM hook_metrics WHERE ts > datetime('now','-7 days')")
+  _7d_overhead_min=$(awk -v ms="${_7d_overhead:-0}" 'BEGIN{printf "%.0f", ms/60000}')
+  printf "  ${BOLD}Performance${RESET} ${CYAN}(last 7d — %s runs, %s min total overhead)${RESET}\n\n" \
+    "${_7d_runs:-0}" "${_7d_overhead_min:-0}"
+  printf "  %-24s  %6s  %7s  %7s  %s\n" "Step" "runs" "avg" "max" "timeout"
+  printf "  %-24s  %6s  %7s  %7s  %s\n" "────────────────────────" "──────" "───────" "───────" "──────────────────"
+
+  _perf_row_count=0
+  while IFS='|' read -r step avg_ms max_ms total_n total_ms_raw; do
+    [ "$_perf_row_count" -ge 12 ] && break
+    avg_i=${avg_ms%%.*}; max_i=${max_ms%%.*}
+    limit=$(_timeout_for "$step")
+    # Filter: hide steps where avg < 500ms AND no configured timeout
+    if [ "${avg_i:-0}" -lt 500 ] 2>/dev/null && [ "${limit:-0}" -eq 0 ] 2>/dev/null; then
+      continue
+    fi
+    avg_fmt=$(_fmt_dur "$avg_ms")
+    max_fmt=$(_fmt_dur "$max_ms")
+    # Build timeout column
+    if [ "${limit:-0}" -gt 0 ] 2>/dev/null; then
+      pct=$(awk -v m="${max_i:-0}" -v t="${limit}" 'BEGIN{printf "%.0f", m/t*100}')
+      bar=$(_bar "${max_i:-0}" "$limit" 15)
+      timeout_col="${bar} ${pct}%"
+    elif [ "${max_i:-0}" -gt 30000 ] 2>/dev/null; then
+      timeout_col="${YELLOW}⚠ no limit (max >30s)${RESET}"
+    else
+      timeout_col="(no limit)"
+    fi
+    printf "  %-24s  %6s  %7s  %7s  %s\n" \
+      "$step" "${total_n:-0}" "$avg_fmt" "$max_fmt" "$timeout_col"
+    _perf_row_count=$(( _perf_row_count + 1 ))
+  done < <(_q "
+WITH ranked AS (
+  SELECT step, duration_ms,
+    ROW_NUMBER() OVER (PARTITION BY step ORDER BY duration_ms) AS rn,
+    COUNT(*) OVER (PARTITION BY step) AS cnt
+  FROM hook_metrics WHERE ts > datetime('now', '-7 days') AND duration_ms > 0
+)
+SELECT step,
+  ROUND(AVG(duration_ms), 1) AS avg_ms,
+  MAX(duration_ms) AS max_ms,
+  MAX(cnt) AS total_n,
+  SUM(duration_ms) AS total_ms
+FROM ranked GROUP BY step ORDER BY total_ms DESC;")
+  printf "\n"
+}
+
+# ─── Compact: Week-over-Week Trends ───────────────────────────────────────────
+section_wow_compact() {
+  _sep
+  printf "  ${BOLD}Week-over-Week${RESET} ${CYAN}(last 7d vs prior 7d)${RESET}\n\n"
+
+  # ── Summary table ────────────────────────────────────────────────────────────
+  _q "
+SELECT
+  SUM(CASE WHEN ts > datetime('now','-7 days')  THEN 1 ELSE 0 END) AS cur_runs,
+  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END) AS prev_runs,
+  SUM(CASE WHEN ts > datetime('now','-7 days')  AND exit_code != 0 AND step NOT IN ('codex-review') THEN 1 ELSE 0 END) AS cur_fail,
+  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND exit_code != 0 AND step NOT IN ('codex-review') THEN 1 ELSE 0 END) AS prev_fail,
+  ROUND(100.0 * SUM(CASE WHEN ts > datetime('now','-7 days')  AND exit_code != 0 AND step NOT IN ('codex-review') THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END),0),1) AS cur_rate,
+  ROUND(100.0 * SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND exit_code != 0 AND step NOT IN ('codex-review') THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END),0),1) AS prev_rate,
+  SUM(CASE WHEN ts > datetime('now','-7 days')  THEN duration_ms ELSE 0 END) AS cur_ms,
+  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN duration_ms ELSE 0 END) AS prev_ms
+FROM hook_metrics
+WHERE ts > datetime('now','-14 days');" \
+  | while IFS='|' read -r cr pr cf pf crate prate cms pms; do
+      cur_min=$(awk -v ms="${cms:-0}" 'BEGIN{printf "%.1f", ms/60000}')
+      prev_min=$(awk -v ms="${pms:-0}" 'BEGIN{printf "%.1f", ms/60000}')
+      rdelta=$(( ${cr:-0} - ${pr:-0} ))
+      rsign=$([ "${rdelta:-0}" -ge 0 ] && echo "+" || echo "")
+      fdelta=$(( ${cf:-0} - ${pf:-0} ))
+      fsign=$([ "${fdelta:-0}" -ge 0 ] && echo "+" || echo "")
+      rdiff=$(awk -v a="${crate:-0}" -v b="${prate:-0}" 'BEGIN{d=a-b; printf "%+.1fpp", d}')
+      mdelta=$(awk -v a="${cms:-0}" -v b="${pms:-0}" 'BEGIN{d=(a-b)/60000; printf "%+.1f min", d}')
+      printf "  %-12s  %7s → %-7s  %s\n" "Runs"      "${pr:-0}" "${cr:-0}"   "$rsign$rdelta ($(_pct_change "${cr:-0}" "${pr:-0}" neutral))"
+      printf "  %-12s  %7s → %-7s  %s\n" "Failures"  "${pf:-0}" "${cf:-0}"   "$fsign$fdelta ($(_pct_change "${cf:-0}" "${pf:-0}" lower_better))"
+      printf "  %-12s  %6s%% → %-6s%%  %s\n" "Fail rate" "${prate:-0}" "${crate:-0}" "$rdiff"
+      printf "  %-12s  %6s m → %-6s m  %s\n" "Overhead"  "$prev_min"  "$cur_min"  "$mdelta ($(_pct_change "${cms:-0}" "${pms:-0}" neutral))"
+    done
+  printf "\n"
+
+  # ── Failure trends ───────────────────────────────────────────────────────────
+  _wow_regr_count=0
+  _wow_fix_count=0
+  max_fail=$(_q "
+SELECT MAX(mx) FROM (
+  SELECT SUM(CASE WHEN ts > datetime('now','-7 days') AND exit_code != 0 THEN 1 ELSE 0 END) AS mx
+  FROM hook_metrics WHERE ts > datetime('now','-14 days') AND step NOT IN ('codex-review') GROUP BY step
+  UNION ALL
+  SELECT SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND exit_code != 0 THEN 1 ELSE 0 END)
+  FROM hook_metrics WHERE ts > datetime('now','-14 days') AND step NOT IN ('codex-review') GROUP BY step
+);")
+  max_fail="${max_fail%%.*}"
+  [ "${max_fail:-0}" -lt 1 ] 2>/dev/null && max_fail=1
+
+  while IFS='|' read -r step cf pf cr pr; do
+    [ "$_wow_regr_count" -ge 5 ] && break
+    delta=$(( ${cf:-0} - ${pf:-0} ))
+    printf "  %s  %-22s  %s  %4s fail  (was %s, %s)\n" \
+      "$(_trend_badge REGR)" "$step" "$(_bar "${cf:-0}" "$max_fail" 14)" "${cf:-0}" \
+      "${pf:-0}" "$(_pct_change "${cf:-0}" "${pf:-0}" lower_better)"
+    _wow_regr_count=$(( _wow_regr_count + 1 ))
+  done < <(_q "
+SELECT step,
+  SUM(CASE WHEN ts > datetime('now','-7 days') AND exit_code != 0 THEN 1 ELSE 0 END) AS cur_f,
+  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND exit_code != 0 THEN 1 ELSE 0 END) AS prev_f,
+  SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END) AS cur_r,
+  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END) AS prev_r
+FROM hook_metrics
+WHERE ts > datetime('now','-14 days') AND step NOT IN ('codex-review')
+GROUP BY step
+HAVING (cur_f > prev_f AND (prev_f = 0 OR CAST(cur_f - prev_f AS REAL)/prev_f > 0.1))
+   AND (cur_r + prev_r) >= 5
+ORDER BY (cur_f - prev_f) DESC;")
+
+  while IFS='|' read -r step cf pf; do
+    [ "$_wow_fix_count" -ge 3 ] && break
+    printf "  %s  %-22s  %s  %4s fail  (was %s, %s)\n" \
+      "$(_trend_badge FIXED)" "$step" "$(_bar "${cf:-0}" "$max_fail" 14)" "${cf:-0}" \
+      "${pf:-0}" "$(_pct_change "${cf:-0}" "${pf:-0}" lower_better)"
+    _wow_fix_count=$(( _wow_fix_count + 1 ))
+  done < <(_q "
+SELECT step,
+  SUM(CASE WHEN ts > datetime('now','-7 days') AND exit_code != 0 THEN 1 ELSE 0 END) AS cur_f,
+  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND exit_code != 0 THEN 1 ELSE 0 END) AS prev_f
+FROM hook_metrics
+WHERE ts > datetime('now','-14 days') AND step NOT IN ('codex-review')
+GROUP BY step
+HAVING prev_f > 0 AND cur_f < prev_f AND CAST(prev_f - cur_f AS REAL)/prev_f > 0.1
+   AND (SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END) +
+        SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END)) >= 5
+ORDER BY (prev_f - cur_f) DESC;")
+  [ "${_wow_regr_count:-0}" -eq 0 ] 2>/dev/null && [ "${_wow_fix_count:-0}" -eq 0 ] 2>/dev/null && \
+    printf "  ${GREEN}No failure trend changes.${RESET}\n"
+
+  # ── Latency regressions (compact) ───────────────────────────────────────────
+  printf "\n"
+  _wow_lat_count=0
+  while IFS='|' read -r step ca pa tn; do
+    [ "$_wow_lat_count" -ge 3 ] && break
+    printf "  %s  %-22s  %s → %s avg  (%s)\n" \
+      "$(_trend_badge SLOW)" "$step" "$(_fmt_dur "$pa")" "$(_fmt_dur "$ca")" \
+      "$(_pct_change "${ca%%.*}" "${pa%%.*}" lower_better)"
+    _wow_lat_count=$(( _wow_lat_count + 1 ))
+  done < <(_q "
+SELECT step,
+  ROUND(AVG(CASE WHEN ts > datetime('now','-7 days') THEN duration_ms END), 0) AS cur_avg,
+  ROUND(AVG(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN duration_ms END), 0) AS prev_avg,
+  SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END) +
+  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END) AS total_n
+FROM hook_metrics
+WHERE ts > datetime('now','-14 days') AND duration_ms > 0
+GROUP BY step
+HAVING cur_avg IS NOT NULL AND prev_avg IS NOT NULL
+  AND cur_avg > prev_avg
+  AND CAST(cur_avg - prev_avg AS REAL) / NULLIF(prev_avg,0) > 0.15
+  AND total_n >= 5
+ORDER BY (cur_avg - prev_avg) DESC;")
+
+  # ── Coverage gaps (compact) ──────────────────────────────────────────────────
+  _wow_gap_count=0
+  while IFS='|' read -r step cr pr; do
+    if printf '%s' "$step" | grep -qE "^(${_SKIP_HOOKS})$"; then continue; fi
+    if [ "${cr:-0}" -eq 0 ] 2>/dev/null; then
+      printf "  %s  %-22s  — stopped (was %s runs)\n" "$(_trend_badge GONE)" "$step" "${pr:-0}"
+    else
+      printf "  %s  %-22s  — new (%s runs)\n" "$(_trend_badge NEW)" "$step" "${cr:-0}"
+    fi
+    _wow_gap_count=$(( _wow_gap_count + 1 ))
+  done < <(_q "
+SELECT step,
+  SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END) AS cur_r,
+  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END) AS prev_r
+FROM hook_metrics WHERE ts > datetime('now','-14 days')
+GROUP BY step
+HAVING (cur_r = 0 AND prev_r >= 5) OR (prev_r = 0 AND cur_r >= 5);")
+  printf "\n"
+}
+
+# ─── Compact: Top Projects (last 7d) ──────────────────────────────────────────
+section_projects_compact() {
+  _sep
+  printf "  ${BOLD}Top Projects${RESET} ${CYAN}(last 7d)${RESET}\n\n"
+  _q "
+SELECT
+  COALESCE(NULLIF(REPLACE(repo, '/Users/$(whoami)/Code/', ''), ''), '(global/unknown)') AS project,
+  ROUND(SUM(duration_ms) / 1000.0 / 60.0, 1) AS total_min,
+  COUNT(*) AS runs,
+  ROUND(100.0 * SUM(CASE WHEN exit_code != 0 AND step NOT IN ('codex-review') THEN 1 ELSE 0 END)
+        / NULLIF(COUNT(*), 0), 1) AS fail_rate
+FROM hook_metrics WHERE ts > datetime('now', '-7 days')
+GROUP BY repo ORDER BY SUM(duration_ms) DESC LIMIT 5;" \
+  | while IFS='|' read -r project total_min runs fail_rate; do
+      fail_i=${fail_rate%%.*}
+      if [ "${fail_i:-0}" -gt 0 ] 2>/dev/null; then
+        printf "  %-32s  %7s min  %6s runs  ${RED}%.1f%% fail rate${RESET}\n" \
+          "$project" "${total_min:-0}" "${runs:-0}" "${fail_rate:-0}"
+      else
+        printf "  %-32s  %7s min  %6s runs\n" \
+          "$project" "${total_min:-0}" "${runs:-0}"
+      fi
+    done
+  printf "\n"
 }
 
 # ─── a) Health Check ──────────────────────────────────────────────────────────
@@ -796,12 +1307,19 @@ HAVING (cur_r = 0 AND prev_r >= 5) OR (prev_r = 0 AND cur_r >= 5);" \
 }
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
-EXPORT_MODE=false
-[[ "${1:-}" == "--export" ]] && EXPORT_MODE=true
+case "${1:-}" in
+  --export)  export_json; exit ;;
+  --verbose) VERBOSE=true ;;
+  *)         VERBOSE=false ;;
+esac
 
-if $EXPORT_MODE; then
-  export_json
-else
+assess_and_report
+section_perf_compact
+section_wow_compact
+section_projects_compact
+printf "\n${BCYAN}══════════════════════════════════════════════════════════════${RESET}\n\n"
+
+if $VERBOSE; then
   section_health
   section_failures
   section_performance
@@ -809,8 +1327,4 @@ else
   section_quality
   section_projects
   section_trends
-
-  printf "\n${BCYAN}══════════════════════════════════════════════════════════════${RESET}\n"
-  printf "${GREEN}  Report complete — DB: %s${RESET}\n" "$HOOKS_DB"
-  printf "${BCYAN}══════════════════════════════════════════════════════════════${RESET}\n\n"
 fi

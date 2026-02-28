@@ -1,107 +1,136 @@
 # cc-hooks-metrics
 
-SQLite-backed telemetry and analytics for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) hooks. Captures timing, exit codes, and tool-use events per session, and surfaces actionable week-over-week trends in a terminal report.
+Fast, actionable overview of Claude Code hook health — see what's broken, slow, or regressing without wading through raw data. Designed to be shareable.
 
 ## What it does
 
-- Wraps any Claude Code hook script to capture wall-clock timing, exit codes, and git context into `hooks.db`
-- Logs every Claude tool use (Bash, Edit, Write, Read, etc.) with full input payloads
-- Produces an ANSI-colored analytics report with 7 sections:
-  - **a) Health** — 24h failure rate and latency summary
-  - **b) Failures** — per-step failure rates, exit codes, and timeout proximity
-  - **c) Performance** — avg / p95 / max duration per step
-  - **d) Usage** — tool distribution, session stats, most-edited files
-  - **e) Data quality** — zero-timing rows, duplicate detection
-  - **f) Per-project cost** — overhead and failures broken down by repo
-  - **g) Week-over-week trends** — visual bar charts comparing last 7d vs prior 7d for failures, coverage gaps, and latency regressions
-- Exports OTel-aligned JSON for piping to Claude or a metrics collector
+Claude Code hooks run scripts on events (tool use, file edits, session start, etc.). This tool collects timing, exit codes, and git context from every hook execution, then surfaces the information that matters:
 
-## Requirements
-
-- `bash` 4+
-- `sqlite3`
-- `awk`, `date`, `/usr/bin/time` (standard on macOS/Linux)
-
-## Installation
-
-```bash
-# Copy scripts to your Claude hooks directory
-cp *.sh ~/.claude/hooks/
-chmod +x ~/.claude/hooks/*.sh
-
-# Wire hooks in ~/.claude/settings.json (see settings-example.json)
-```
+- **Traffic-light status** across 5 categories: reliability, performance, broken hooks, regressions, review gate
+- **Actionable items** grouped by step — what's wrong and what to do about it
+- **Trend detection** — failure regressions, latency regressions, and fixes week-over-week
+- **OTel-aligned JSON export** for piping to Claude or other tools
 
 ## Usage
 
 ```bash
-# Full terminal report
-~/.claude/hooks/hooks-report.sh
+# Interactive TUI (default in a terminal)
+# Dashboard: lights + grouped actions. Press 'd' for detail (perf, WoW, projects).
+hooks-report.sh
 
-# OTel-aligned JSON export
-~/.claude/hooks/hooks-report.sh --export
+# Static output — lean: lights, grouped actions, REGR/SLOW trends (~25-40 lines)
+hooks-report.sh --static
+hooks-report.sh | cat
+
+# Verbose: adds perf table, WoW summary, top projects, FIXED/GONE trends + 7 legacy sections
+hooks-report.sh --verbose
+
+# JSON export
+hooks-report.sh --export
 
 # Pipe to Claude for analysis
-~/.claude/hooks/hooks-report.sh --export | claude -p \
-  "Analyze this hooks telemetry. Identify: 1) errors to fix, \
-   2) performance to optimize, 3) coverage gaps to close. Suggest next steps."
+hooks-report.sh --export | claude -p "Analyze and suggest next steps"
 ```
 
-## Architecture
+Mode is auto-detected: TTY → Textual TUI; non-TTY or `--static` → Rich static text; `--export` → JSON.
+
+## How it works
 
 ```
-Claude Code event (PostToolUse, etc.)
-  │
-  ▼
-hook-metrics.sh          wraps any hook script, captures timing + git context
-  │  /usr/bin/time -p    measures real/user/sys seconds
-  │  git rev-parse       captures branch, sha, repo
-  │
-  ├──► audit-logger.sh   logs tool_input JSON → audit_events table
-  └──► mermaid-lint.sh   (example downstream hook)
-         │
-         ▼
-    hooks.db  (SQLite, WAL mode, 30-day rolling window)
-         │
-         ▼
-    hooks-report.sh      read-only analytics over hooks.db
+Claude Code event
+  → hook-metrics.sh (passthrough wrapper — captures timing, git context, exit code)
+    → your hook script (mermaid-lint, pytest, eslint, etc.)
+      → hooks.db (SQLite, WAL mode, 30-day rolling window)
+        → hooks-report.sh (Python TUI / static / JSON)
 ```
 
-## Scripts
+- **hook-metrics.sh** wraps any hook script, records wall-clock time via `/usr/bin/time -p`, and inserts a row into `hook_metrics`. The wrapped script's exit code is always preserved.
+- **audit-logger.sh** captures tool-use JSON payloads into `audit_events` (stdin passthrough, can be chained).
+- **hooks-report.sh** reads the SQLite database and renders the report.
 
-| Script | Purpose |
-|--------|---------|
-| `hook-metrics.sh` | Wrapper: runs any hook with `/usr/bin/time`, inserts into `hook_metrics` |
-| `audit-logger.sh` | Reads Claude tool-use JSON from stdin, inserts into `audit_events` |
-| `db-init.sh` | Schema definition and shared helpers (`_db_exec`, `_sql_escape`) |
-| `hooks-report.sh` | Full analytics report + `--export` JSON mode |
-| `mermaid-lint.sh` | Example hook: lints Mermaid diagrams in edited files |
-| `migrate-jsonl-to-sqlite.sh` | One-time migration from JSONL log files |
-| `migrate-logs-to-sqlite.sh` | Migration from plaintext/JSON log formats |
+## Setup
+
+### Prerequisites
+
+- Python 3.10+
+- `pip install 'textual>=8.0,<9.0' 'rich>=14.0'`
+- `bash`, `sqlite3`, `awk`, `/usr/bin/time`
+
+### Install
+
+```bash
+git clone <repo-url> cc-hooks-metrics
+cd cc-hooks-metrics
+rsync -a --delete hooks_report/ ~/.claude/hooks/hooks_report/
+install -m 755 hooks-report.sh hook-metrics.sh audit-logger.sh db-init.sh \
+  ~/.claude/hooks/
+```
+
+### Wire hooks in Claude Code
+
+Add to `~/.claude/settings.json` (see `settings-example.json` for full examples):
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": { "tool_name": "Write" },
+        "hooks": [
+          "~/.claude/hooks/hook-metrics.sh PostToolUse:mermaid-lint ~/.claude/hooks/mermaid-lint.sh"
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Database
+
+Defaults to `~/.claude/hooks.db`. Override with `CLAUDE_HOOKS_DB` env var.
+
+## Project structure
+
+```
+hooks-report.sh          # 2-line Python wrapper (entry point)
+hooks-report-legacy.sh   # Original bash (rollback reference)
+hook-metrics.sh          # Passthrough timing wrapper (bash, unchanged)
+audit-logger.sh          # Tool-use JSON logger (bash, unchanged)
+db-init.sh               # Schema + SQLite helpers (bash, unchanged)
+
+hooks_report/            # Python reporting package (Textual + Rich)
+  __main__.py            # Entry point: mode dispatch
+  cli.py                 # argparse: --export, --verbose, --static, --db
+  config.py              # Timeouts, thresholds, constants
+  db.py                  # HooksDB: typed dataclasses + SQLite queries
+  render.py              # Rich rendering helpers
+  static.py              # Static/piped output assembly
+  tui.py                 # Textual TUI: dashboard + detail screen
+```
 
 ## Database schema
 
 ```sql
--- Tool usage audit trail
-audit_events (id, ts, session, tool, input)
-
 -- Hook execution telemetry
 hook_metrics (id, ts, hook, step, cmd, exit_code,
               duration_ms, real_s, user_s, sys_s,
               branch, sha, host, repo)
+
+-- Tool usage audit trail
+audit_events (id, ts, session, tool, input)
 ```
 
 ## OTel export format
 
-`hooks-report.sh --export` outputs a JSON document using OpenTelemetry naming conventions:
+`hooks-report.sh --export` outputs JSON using OpenTelemetry naming conventions:
 
 ```json
 {
   "schema": "claude.hooks.trends/v1",
   "generated_at": "...",
   "summary": {
-    "current":  { "claude.hooks.runs": 24428, "claude.hooks.failures": 327, ... },
-    "previous": { "claude.hooks.runs": 12166, "claude.hooks.failures": 120, ... }
+    "current":  { "claude.hooks.runs": 26629, "claude.hooks.failures": 281, ... },
+    "previous": { "claude.hooks.runs": 12166, "claude.hooks.failures": 107, ... }
   },
   "failure_trends": [...],
   "latency_trends": [...],
@@ -110,7 +139,7 @@ hook_metrics (id, ts, hook, step, cmd, exit_code,
 ```
 
 Metric names: `claude.hooks.runs`, `claude.hooks.failures`, `claude.hooks.duration.*`
-Attributes: `hook.step`, `hook.name`, `vcs.repository`
+Attributes: `hook.step`, `vcs.repository`
 
 ## License
 

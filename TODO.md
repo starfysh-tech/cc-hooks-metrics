@@ -26,3 +26,5 @@ Enhancements identified but out of scope for current work. Review before plannin
 - [ ] **WoW summary table** — the 4-row aggregate (runs/failures/fail rate/overhead) adds context but no specific action; the trends section already highlights specific regressions; consider moving to `--verbose` only
 - [ ] **TUI subtitle accuracy** — after returning from the Detail screen, the app subtitle stays as "Detail" until refresh; should restore dashboard subtitle on pop
 - [ ] **Configurable thresholds** — `config.py` constants (regression %, timeout %, slow run threshold) are hardcoded; a user-level config file would allow tuning without editing source
+- [ ] **audit-logger.sh: single `head` read** — currently reads `$TMPFILE` three times (`tool`, `session`, `full_payload`); consolidate into one `payload_head=$(head -c 65536 "$TMPFILE")` variable (PR #2 review comment)
+- [ ] **spans.py: replace slice unpacking with full destructure** — `row[:7]` and `row[10:15]` are brittle if column order changes; use `row_id, ts, hook, step, cmd, exit_code, duration_ms, _, _, _, branch, sha, host, repo, session = row` (PR #2 review comment)

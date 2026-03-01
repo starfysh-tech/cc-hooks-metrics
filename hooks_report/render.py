@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from itertools import groupby
 from rich.text import Text
 from rich.table import Table
 from typing import Optional
@@ -16,14 +17,14 @@ def fmt_dur(ms: int | float) -> str:
     return f"{ms_int}ms"
 
 
-def bar_chart(val: int | float, max_val: int | float, width: int = 30) -> Text:
+def bar_chart(val: int | float, max_val: int | float, width: int = 30, color: str | None = None) -> Text:
     """Proportional bar as Rich Text."""
     if max_val <= 0:
         return Text("░" * width, style="dim")
     filled = min(width, round(val / max_val * width))
     empty = width - filled
     t = Text()
-    t.append("█" * filled, style="cyan")
+    t.append("█" * filled, style=color or "cyan")
     t.append("░" * empty, style="dim")
     return t
 
@@ -42,9 +43,9 @@ def trend_badge(badge_type: str) -> Text:
 
 
 def pct_change(cur: float, prev: float, polarity: str = "neutral") -> Text:
-    """Colored percentage change. Returns Text('(new)') if prev == 0."""
+    """Colored percentage change. Returns Text('new') if prev == 0."""
     if prev == 0:
-        return Text("(new)", style="cyan")
+        return Text("new", style="cyan")
     pct = (cur - prev) / prev * 100
     label = f"{pct:+.1f}%"
     style = ""
@@ -78,7 +79,7 @@ def traffic_light_grid(summary: ReliabilitySummary) -> Table:
 
     # Performance (timeout)
     if summary.worst_pct >= config.TIMEOUT_RED_PCT:
-        to_icon, to_detail = "❌", f"{summary.n_over} hooks exceeding timeout limits"
+        to_icon, to_detail = "❌", f"{summary.n_over} over timeout"
     elif summary.worst_pct >= config.TIMEOUT_YELLOW_PCT:
         to_icon, to_detail = "⚠️", "hooks approaching timeout limits"
     else:
@@ -96,9 +97,9 @@ def traffic_light_grid(summary: ReliabilitySummary) -> Table:
     if summary.regr_count == 0:
         rg_icon, rg_detail = "✅", ""
     elif summary.regr_count <= 2:
-        rg_icon, rg_detail = "⚠️", f"{summary.regr_count} latency regressions adding >{config.IMPACT_THRESHOLD_S}s/week"
+        rg_icon, rg_detail = "⚠️", f"{summary.regr_count} regressions (>{config.IMPACT_THRESHOLD_S}s/wk)"
     else:
-        rg_icon, rg_detail = "❌", f"{summary.regr_count} latency regressions adding >{config.IMPACT_THRESHOLD_S}s/week"
+        rg_icon, rg_detail = "❌", f"{summary.regr_count} regressions (>{config.IMPACT_THRESHOLD_S}s/wk)"
 
     # Review gate
     if summary.review_runs > 0:
@@ -113,7 +114,7 @@ def traffic_light_grid(summary: ReliabilitySummary) -> Table:
         t = Text()
         t.append(f"  {label:<16} ", style="bold")
         t.append(icon + "  ", style=icon_style_map.get(icon, ""))
-        t.append(f"{detail:<20}")
+        t.append(f"{detail}")
         return t
 
     grid = Table.grid(padding=(0, 2))
@@ -138,7 +139,11 @@ def action_items_panel(
     summary: ReliabilitySummary,
     action_items: list[ActionItem],
 ) -> list[Text]:
-    """Returns list of Rich Text renderables for action items, or 'All clear'."""
+    """Returns list of Rich Text renderables for action items, grouped by step.
+
+    Multiple issues for the same step are merged into one entry. BROKEN takes
+    priority for the fix suggestion. Returns 'All clear' when nothing to do.
+    """
     statuses = [
         summary.rel_failures == 0,
         summary.worst_pct < config.TIMEOUT_YELLOW_PCT,
@@ -148,15 +153,41 @@ def action_items_panel(
     if all(statuses) and not action_items:
         return [Text("  All clear — no action items.", style="green")]
 
-    items: list[Text] = []
-    for item in action_items:
-        icon = "❌" if item.severity == "red" else "⚠️ "
+    # Sort by step (for grouping), then by priority within each step
+    priority = {"BROKEN": 0, "TIMEOUT": 1, "SLOW": 2, "FAIL": 3}
+    sorted_items = sorted(action_items, key=lambda x: (x.step, priority.get(x.category, 99)))
+
+    # Collect groups with severity rank so we can sort red before yellow
+    groups: list[tuple[int, list[Text]]] = []
+    for step, group in groupby(sorted_items, key=lambda x: x.step):
+        step_items = list(group)
+
+        # Severity: red if any item is red
+        severity = "red" if any(i.severity == "red" for i in step_items) else "yellow"
+        severity_rank = 0 if severity == "red" else 1
+        icon = "❌" if severity == "red" else "⚠️ "
+
+        # Fix from highest-priority category (first after sort)
+        best_fix = step_items[0].fix
+
+        # Strip the step name prefix from each detail to avoid repetition
+        stripped_details = []
+        for item in step_items:
+            d = item.detail
+            if d.startswith(f"{step} — "):
+                d = d[len(f"{step} — "):]
+            elif d.startswith(f"{step} "):
+                d = d[len(f"{step} "):]
+            stripped_details.append(d)
+
         line1 = Text()
         line1.append(f"  {icon} ", style="bold")
-        line1.append(f"{item.category:<10}", style="bold")
-        line1.append(f" {item.detail}")
-        line2 = Text(f"     → {item.fix}", style="dim")
-        items.append(line1)
-        items.append(line2)
-        items.append(Text(""))
+        line1.append(f"{step} — {', '.join(stripped_details)}")
+        line2 = Text(f"     → {best_fix}", style="dim")
+        groups.append((severity_rank, [line1, line2]))
+
+    groups.sort(key=lambda x: x[0])
+    items: list[Text] = []
+    for _, group_lines in groups:
+        items.extend(group_lines)
     return items

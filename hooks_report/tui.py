@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from rich.table import Table
 from rich.text import Text
 from textual.app import App, ComposeResult
@@ -27,8 +28,9 @@ def _perf_rich_table(db: HooksDB) -> Table:
         timeout = config.STEP_TIMEOUTS.get(row.step, 0)
         if timeout > 0:
             pct = round(row.max_ms / timeout * 100)
+            bar_color = "red" if pct >= 100 else "yellow" if pct >= 80 else "cyan"
             timeout_cell = Text()
-            timeout_cell.append_text(render.bar_chart(row.max_ms, timeout, 12))
+            timeout_cell.append_text(render.bar_chart(row.max_ms, timeout, 12, bar_color))
             timeout_cell.append(f" {pct}%")
         elif row.max_ms > 30000:
             timeout_cell = Text("no limit", style="yellow")
@@ -83,10 +85,12 @@ def _projects_rich_table(db: HooksDB) -> Table:
     table.add_column("Fail %", width=7, justify="right")
 
     for p in db.projects_compact():
-        if (p.fail_rate or 0) > 0:
-            fail_cell = Text(f"{p.fail_rate:.1f}%", style="red")
-        else:
+        if p.fail_rate is None:
             fail_cell = Text("—", style="dim")
+        elif p.fail_rate == 0:
+            fail_cell = Text("0%", style="green")
+        else:
+            fail_cell = Text(f"{p.fail_rate:.1f}%", style="red")
         table.add_row(p.project, f"{p.total_min:.1f} min", str(p.runs), fail_cell)
 
     return table
@@ -135,14 +139,14 @@ class DetailScreen(Screen):
             for r in regressions:
                 ft.append_text(render.trend_badge("REGR"))
                 ft.append(f"  {r.step:<22}  ")
-                ft.append_text(render.bar_chart(r.cur_f, max_fail, 14))
+                ft.append_text(render.bar_chart(r.cur_f, max_fail, 14, "red"))
                 ft.append(f"  {r.cur_f} fail  (was {r.prev_f}, ")
                 ft.append_text(render.pct_change(r.cur_f, r.prev_f, "lower_better"))
                 ft.append(")\n")
             for r in improvements:
                 ft.append_text(render.trend_badge("FIXED"))
                 ft.append(f"  {r.step:<22}  ")
-                ft.append_text(render.bar_chart(r.cur_f, max_fail, 14))
+                ft.append_text(render.bar_chart(r.cur_f, max_fail, 14, "green"))
                 ft.append(f"  {r.cur_f} fail  (was {r.prev_f}, ")
                 ft.append_text(render.pct_change(r.cur_f, r.prev_f, "lower_better"))
                 ft.append(")\n")
@@ -205,7 +209,7 @@ class HooksReportApp(App):
     def _populate_dashboard(self) -> None:
         summary = self.db.assess()
         overhead_min = round(summary.overhead_24h_ms / 60000, 1)
-        self.sub_title = f"24h: {summary.rel_total} runs · {overhead_min}m overhead"
+        self.sub_title = f"24h: {summary.rel_total} runs · {overhead_min}m overhead · {datetime.now():%H:%M}"
 
         self.query_one("#traffic-lights", Static).update(render.traffic_light_grid(summary))
 
@@ -229,7 +233,10 @@ class HooksReportApp(App):
     def action_export(self) -> None:
         import json
         from pathlib import Path
-        data = self.db.export_data()
-        out = Path("/tmp/hooks-export.json")
-        out.write_text(json.dumps(data, indent=2))
-        self.notify(f"Exported to {out}", title="Export")
+        try:
+            data = self.db.export_data()
+            out = Path("/tmp/hooks-export.json")
+            out.write_text(json.dumps(data, indent=2))
+            self.notify(f"Exported to {out}", title="Export")
+        except Exception as e:
+            self.notify(str(e), severity="error", title="Export failed")

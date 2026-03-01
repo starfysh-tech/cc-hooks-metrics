@@ -2,7 +2,7 @@ import os
 import sys
 from . import config
 from .cli import parse_args
-from .db import HooksDB
+from .db import HooksDB, HooksDBError
 
 
 def main():
@@ -10,15 +10,23 @@ def main():
     db_path = args.db or os.environ.get("CLAUDE_HOOKS_DB") or config.DEFAULT_DB_PATH
     db = HooksDB(db_path)
 
-    if args.export:
-        from .static import export_json
-        export_json(db)
-    elif args.static or not sys.stdout.isatty():
-        from .static import render_static
-        render_static(db, verbose=args.verbose)
-    else:
-        from .tui import HooksReportApp
-        HooksReportApp(db).run()
+    try:
+        if args.export:
+            from .static import export_json
+            export_json(db)
+        elif args.static or not sys.stdout.isatty():
+            from .static import render_static
+            render_static(db, verbose=args.verbose)
+        else:
+            from .tui import HooksReportApp
+            HooksReportApp(db).run()
+    except HooksDBError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        db.close()
 
 
 if __name__ == "__main__":

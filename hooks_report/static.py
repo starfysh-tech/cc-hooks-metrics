@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from rich.console import Console
 from rich.text import Text
 from rich.table import Table
 
 from . import config, render
-from .db import HooksDB
+from .db import HooksDB, ReliabilitySummary
 
 
 def render_static(db: HooksDB, verbose: bool = False) -> None:
@@ -22,7 +23,7 @@ def render_static(db: HooksDB, verbose: bool = False) -> None:
     console.print(Text("══════════════════════════════════════════════════════════════", style="bold cyan"))
     console.print(Text("  Hooks Status", style="bold cyan"))
     console.print(Text("══════════════════════════════════════════════════════════════", style="bold cyan"))
-    console.print(Text(f"  24h: {summary.rel_total} runs | {overhead_min} min overhead", style="cyan"))
+    console.print(Text(f"  24h: {summary.rel_total} runs | {overhead_min} min overhead · {datetime.now():%Y-%m-%d %H:%M}", style="cyan"))
     console.print()
     console.print(render.traffic_light_grid(summary))
 
@@ -45,10 +46,12 @@ def render_static(db: HooksDB, verbose: bool = False) -> None:
         console.print()
         console.print(Text("  All clear — no action items.", style="green"))
 
-    # ── Compact sections ──────────────────────────────────────────────────────
-    section_perf_compact(console, db)
-    section_wow_compact(console, db)
-    section_projects_compact(console, db)
+    # Trends section (REGR/SLOW in default; full WoW + FIXED/GONE in verbose)
+    section_wow_compact(console, db, verbose=verbose)
+
+    if verbose:
+        section_perf_compact(console, db, summary)
+        section_projects_compact(console, db)
 
     # Closing border
     console.print()
@@ -79,9 +82,8 @@ def _hdr(console: Console, title: str):
 # ── Compact sections ──────────────────────────────────────────────────────────
 
 
-def section_perf_compact(console: Console, db: HooksDB) -> None:
+def section_perf_compact(console: Console, db: HooksDB, summary: ReliabilitySummary) -> None:
     _sep(console)
-    summary = db.assess()
     runs_7d = summary.runs_7d
     overhead_7d_min = round(summary.overhead_7d_ms / 60000)
 
@@ -103,7 +105,8 @@ def section_perf_compact(console: Console, db: HooksDB) -> None:
         timeout = config.STEP_TIMEOUTS.get(row.step, 0)
         if timeout > 0:
             pct = round(row.max_ms / timeout * 100)
-            bar = render.bar_chart(row.max_ms, timeout, 15)
+            bar_color = "red" if pct >= 100 else "yellow" if pct >= 80 else "cyan"
+            bar = render.bar_chart(row.max_ms, timeout, 15, bar_color)
             timeout_text = Text()
             timeout_text.append_text(bar)
             timeout_text.append(f" {pct}%")
@@ -118,92 +121,106 @@ def section_perf_compact(console: Console, db: HooksDB) -> None:
     console.print()
 
 
-def section_wow_compact(console: Console, db: HooksDB) -> None:
-    _sep(console)
-    console.print(Text("  Week-over-Week (last 7d vs prior 7d)", style="bold"))
-    console.print()
-
-    wow = db.wow_summary()
-
-    # 4-row summary table
-    table = Table(box=None, padding=(0, 1), show_header=False)
-    table.add_column("metric", width=12)
-    table.add_column("prev", width=8, justify="right")
-    table.add_column("arrow", width=3)
-    table.add_column("cur", width=8)
-    table.add_column("delta")
-
-    # Runs
-    rdelta = wow.cur_runs - wow.prev_runs
-    run_delta_text = Text()
-    rsign = "+" if rdelta >= 0 else ""
-    run_delta_text.append(f"{rsign}{rdelta} (")
-    run_delta_text.append_text(render.pct_change(wow.cur_runs, wow.prev_runs, "neutral"))
-    run_delta_text.append(")")
-    table.add_row("Runs", str(wow.prev_runs), "→", str(wow.cur_runs), run_delta_text)
-
-    # Failures
-    fdelta = wow.cur_fail - wow.prev_fail
-    fail_delta_text = Text()
-    fsign = "+" if fdelta >= 0 else ""
-    fail_delta_text.append(f"{fsign}{fdelta} (")
-    fail_delta_text.append_text(render.pct_change(wow.cur_fail, wow.prev_fail, "lower_better"))
-    fail_delta_text.append(")")
-    table.add_row("Failures", str(wow.prev_fail), "→", str(wow.cur_fail), fail_delta_text)
-
-    # Fail rate
-    cur_rate_str = f"{wow.cur_rate:.1f}%" if wow.cur_rate is not None else "0.0%"
-    prev_rate_str = f"{wow.prev_rate:.1f}%" if wow.prev_rate is not None else "0.0%"
-    rdiff = (wow.cur_rate or 0) - (wow.prev_rate or 0)
-    table.add_row("Fail rate", prev_rate_str, "→", cur_rate_str, Text(f"{rdiff:+.1f}pp"))
-
-    # Overhead
-    cur_min = f"{wow.cur_ms / 60000:.1f}"
-    prev_min = f"{wow.prev_ms / 60000:.1f}"
-    mdelta = (wow.cur_ms - wow.prev_ms) / 60000
-    oh_delta_text = Text()
-    oh_delta_text.append(f"{mdelta:+.1f} min (")
-    oh_delta_text.append_text(render.pct_change(wow.cur_ms, wow.prev_ms, "neutral"))
-    oh_delta_text.append(")")
-    table.add_row("Overhead", f"{prev_min} m", "→", f"{cur_min} m", oh_delta_text)
-
-    console.print(table)
-    console.print()
-
-    # Failure trends
+def section_wow_compact(console: Console, db: HooksDB, verbose: bool = False) -> None:
     regressions = db.failure_regressions()
     improvements = db.failure_improvements()
+    lat_regs = db.latency_regressions()
+    gaps = db.coverage_gaps()
 
-    if not regressions and not improvements:
-        console.print(Text("  No failure trend changes.", style="green"))
+    # In default mode, skip entirely if there is nothing actionable to show
+    if not verbose:
+        has_content = bool(regressions or lat_regs or any(g.cur_r > 0 for g in gaps))
+        if not has_content:
+            return
+
+    _sep(console)
+
+    if verbose:
+        console.print(Text("  Week-over-Week (last 7d vs prior 7d)", style="bold"))
+        console.print()
+
+        wow = db.wow_summary()
+
+        # 4-row summary table
+        table = Table(box=None, padding=(0, 1), show_header=False)
+        table.add_column("metric", width=12)
+        table.add_column("prev", width=8, justify="right")
+        table.add_column("arrow", width=3)
+        table.add_column("cur", width=8)
+        table.add_column("delta")
+
+        # Runs
+        rdelta = wow.cur_runs - wow.prev_runs
+        run_delta_text = Text()
+        rsign = "+" if rdelta >= 0 else ""
+        run_delta_text.append(f"{rsign}{rdelta} (")
+        run_delta_text.append_text(render.pct_change(wow.cur_runs, wow.prev_runs, "neutral"))
+        run_delta_text.append(")")
+        table.add_row("Runs", str(wow.prev_runs), "→", str(wow.cur_runs), run_delta_text)
+
+        # Failures
+        fdelta = wow.cur_fail - wow.prev_fail
+        fail_delta_text = Text()
+        fsign = "+" if fdelta >= 0 else ""
+        fail_delta_text.append(f"{fsign}{fdelta} (")
+        fail_delta_text.append_text(render.pct_change(wow.cur_fail, wow.prev_fail, "lower_better"))
+        fail_delta_text.append(")")
+        table.add_row("Failures", str(wow.prev_fail), "→", str(wow.cur_fail), fail_delta_text)
+
+        # Fail rate
+        cur_rate_str = f"{wow.cur_rate:.1f}%" if wow.cur_rate is not None else "0.0%"
+        prev_rate_str = f"{wow.prev_rate:.1f}%" if wow.prev_rate is not None else "0.0%"
+        rdiff = (wow.cur_rate or 0) - (wow.prev_rate or 0)
+        table.add_row("Fail rate", prev_rate_str, "→", cur_rate_str, Text(f"{rdiff:+.1f}pp"))
+
+        # Overhead
+        cur_min = f"{wow.cur_ms / 60000:.1f}"
+        prev_min = f"{wow.prev_ms / 60000:.1f}"
+        mdelta = (wow.cur_ms - wow.prev_ms) / 60000
+        oh_delta_text = Text()
+        oh_delta_text.append(f"{mdelta:+.1f} min (")
+        oh_delta_text.append_text(render.pct_change(wow.cur_ms, wow.prev_ms, "neutral"))
+        oh_delta_text.append(")")
+        table.add_row("Overhead", f"{prev_min} m", "→", f"{cur_min} m", oh_delta_text)
+
+        console.print(table)
+        console.print()
+
+    # Failure trends: REGR always shown, FIXED only in verbose
+    shown_improvements = improvements if verbose else []
+    if not regressions and not shown_improvements:
+        if verbose:
+            console.print(Text("  No failure trend changes.", style="green"))
     else:
-        all_f = ([r.cur_f for r in regressions] + [r.prev_f for r in regressions]
-                 + [r.cur_f for r in improvements] + [r.prev_f for r in improvements])
+        all_f = (
+            [r.cur_f for r in regressions] + [r.prev_f for r in regressions]
+            + [r.cur_f for r in shown_improvements] + [r.prev_f for r in shown_improvements]
+        )
         max_fail = max(all_f) if all_f else 1
 
         for r in regressions:
             line = Text()
             line.append_text(render.trend_badge("REGR"))
             line.append(f"  {r.step:<22}  ")
-            line.append_text(render.bar_chart(r.cur_f, max_fail, 14))
+            line.append_text(render.bar_chart(r.cur_f, max_fail, 14, "red"))
             line.append(f"  {r.cur_f:4d} fail  (was {r.prev_f}, ")
             line.append_text(render.pct_change(r.cur_f, r.prev_f, "lower_better"))
             line.append(")")
             console.print(line)
 
-        for r in improvements:
+        for r in shown_improvements:
             line = Text()
             line.append_text(render.trend_badge("FIXED"))
             line.append(f"  {r.step:<22}  ")
-            line.append_text(render.bar_chart(r.cur_f, max_fail, 14))
+            line.append_text(render.bar_chart(r.cur_f, max_fail, 14, "green"))
             line.append(f"  {r.cur_f:4d} fail  (was {r.prev_f}, ")
             line.append_text(render.pct_change(r.cur_f, r.prev_f, "lower_better"))
             line.append(")")
             console.print(line)
 
-    # Latency regressions
-    console.print()
-    lat_regs = db.latency_regressions()
+    # Latency regressions (SLOW — always shown)
+    if lat_regs:
+        console.print()
     for r in lat_regs:
         line = Text()
         line.append_text(render.trend_badge("SLOW"))
@@ -212,14 +229,14 @@ def section_wow_compact(console: Console, db: HooksDB) -> None:
         line.append(")")
         console.print(line)
 
-    # Coverage gaps
-    gaps = db.coverage_gaps()
+    # Coverage gaps: NEW always shown, GONE only in verbose
     for g in gaps:
         if g.cur_r == 0:
-            line = Text()
-            line.append_text(render.trend_badge("GONE"))
-            line.append(f"  {g.step:<22}  — stopped (was {g.prev_r} runs)")
-            console.print(line)
+            if verbose:
+                line = Text()
+                line.append_text(render.trend_badge("GONE"))
+                line.append(f"  {g.step:<22}  — stopped (was {g.prev_r} runs)")
+                console.print(line)
         else:
             line = Text()
             line.append_text(render.trend_badge("NEW"))
@@ -236,8 +253,7 @@ def section_projects_compact(console: Console, db: HooksDB) -> None:
 
     projects = db.projects_compact()
     for p in projects:
-        fail_i = int(p.fail_rate or 0)
-        if fail_i > 0:
+        if (p.fail_rate or 0) > 0:
             line = Text()
             line.append(f"  {p.project:<32}  {p.total_min:>7.1f} min  {p.runs:>6} runs  ")
             line.append(f"{p.fail_rate:.1f}% fail rate", style="red")
@@ -465,7 +481,7 @@ def section_trends(console: Console, db: HooksDB) -> None:
         prior_line.append(f"  {r.prev_f:4d} failures")
         console.print(prior_line)
         last_line = Text("    Last   ", style="red")
-        last_line.append_text(render.bar_chart(r.cur_f, max_fail))
+        last_line.append_text(render.bar_chart(r.cur_f, max_fail, color="red"))
         last_line.append(f"  {r.cur_f:4d} failures   ▲ +{delta} (")
         last_line.append_text(render.pct_change(r.cur_f, r.prev_f, "lower_better"))
         last_line.append(")")
@@ -483,7 +499,7 @@ def section_trends(console: Console, db: HooksDB) -> None:
         prior_line.append(f"  {r.prev_f:4d} failures")
         console.print(prior_line)
         last_line = Text("    Last   ", style="green")
-        last_line.append_text(render.bar_chart(r.cur_f, max_fail))
+        last_line.append_text(render.bar_chart(r.cur_f, max_fail, color="green"))
         last_line.append(f"  {r.cur_f:4d} failures   ▼ -{delta} (")
         last_line.append_text(render.pct_change(r.cur_f, r.prev_f, "lower_better"))
         last_line.append(")")
@@ -530,7 +546,7 @@ def section_trends(console: Console, db: HooksDB) -> None:
         prior_line.append(f"  {r.prev_avg:>7} ms avg")
         console.print(prior_line)
         last_line = Text("    Last   ", style=color)
-        last_line.append_text(render.bar_chart(r.cur_avg, max_lat))
+        last_line.append_text(render.bar_chart(r.cur_avg, max_lat, color=color))
         last_line.append(f"  {r.cur_avg:>7} ms avg   ▲ +{delta_ms}ms (")
         last_line.append_text(render.pct_change(r.cur_avg, r.prev_avg, "lower_better"))
         last_line.append(")")

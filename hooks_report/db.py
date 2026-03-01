@@ -122,6 +122,57 @@ class HealthSummary:
     slow_count: int
 
 
+@dataclass
+class StepReliability:
+    step: str
+    total_runs: int
+    failures: int
+    fail_rate: Optional[float]
+    p50_ms: int
+    p90_ms: int
+    p99_ms: int
+    avg_ms: float
+    max_ms: int
+    total_s: float
+    pain_index: float
+
+
+@dataclass
+class RepoProfile:
+    repo: str
+    total_runs: int
+    failures: int
+    fail_rate: Optional[float]
+    distinct_steps: int
+    overhead_ms: int
+    overhead_min: float
+    session_count: int
+    guardrail_density: float
+
+
+@dataclass
+class SessionSummary:
+    session_id: str
+    first_ts: str
+    last_ts: str
+    duration_s: int
+    hook_runs: int
+    hook_failures: int
+    tool_uses: int
+    overhead_ms: int
+    distinct_steps: int
+
+
+@dataclass
+class SessionTimeline:
+    ts: str
+    source: str       # "hook" | "tool"
+    name: str
+    duration_ms: int
+    exit_code: Optional[int]
+    detail: str
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -643,6 +694,223 @@ WHERE ts > datetime('now', '-1 day')
             slow_count=_int(row[7]),
         )
 
+    # ── Step / Repo / Session analysis ────────────────────────────────────────
+
+    def step_reliability(self, days: int = 7, repo: Optional[str] = None) -> list[StepReliability]:
+        sem = _semantic_exit_placeholders()
+        repo_filter = "AND repo = ?" if repo else ""
+        day_str = f"-{days} days"
+        params: list = [day_str, day_str]
+        if repo:
+            params = [day_str, repo, day_str, repo]
+        rows = self._query(f"""
+WITH stats AS (
+  SELECT step,
+    COUNT(*) AS total_runs,
+    SUM(CASE WHEN exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END) AS failures,
+    ROUND(AVG(duration_ms), 1) AS avg_ms,
+    MAX(duration_ms) AS max_ms,
+    ROUND(SUM(duration_ms) / 1000.0, 2) AS total_s
+  FROM hook_metrics
+  WHERE ts > datetime('now', ?) {repo_filter}
+  GROUP BY step
+),
+ranked AS (
+  SELECT step, duration_ms,
+    ROW_NUMBER() OVER (PARTITION BY step ORDER BY duration_ms) AS rn,
+    COUNT(*) OVER (PARTITION BY step) AS cnt
+  FROM hook_metrics
+  WHERE ts > datetime('now', ?) AND duration_ms > 0 {repo_filter}
+)
+SELECT
+  s.step,
+  s.total_runs,
+  s.failures,
+  ROUND(100.0 * s.failures / NULLIF(s.total_runs, 0), 1) AS fail_rate,
+  COALESCE(MAX(CASE WHEN r.rn = CAST(CEIL(0.50 * r.cnt) AS INTEGER) THEN r.duration_ms END), 0) AS p50_ms,
+  COALESCE(MAX(CASE WHEN r.rn = CAST(CEIL(0.90 * r.cnt) AS INTEGER) THEN r.duration_ms END), 0) AS p90_ms,
+  COALESCE(MAX(CASE WHEN r.rn = CAST(CEIL(0.99 * r.cnt) AS INTEGER) THEN r.duration_ms END), 0) AS p99_ms,
+  s.avg_ms,
+  s.max_ms,
+  s.total_s
+FROM stats s
+LEFT JOIN ranked r ON s.step = r.step
+GROUP BY s.step
+ORDER BY s.failures DESC, s.avg_ms DESC
+""", tuple(params))
+        result = []
+        for row in rows:
+            step, total_runs, failures, fail_rate, p50, p90, p99, avg_ms, max_ms, total_s = row
+            fr = _opt_float(fail_rate)
+            pain = float(total_s or 0) * (fr / 100.0) if fr is not None else 0.0
+            result.append(StepReliability(
+                step=step,
+                total_runs=_int(total_runs),
+                failures=_int(failures),
+                fail_rate=fr,
+                p50_ms=_int(p50),
+                p90_ms=_int(p90),
+                p99_ms=_int(p99),
+                avg_ms=float(avg_ms or 0),
+                max_ms=_int(max_ms),
+                total_s=float(total_s or 0),
+                pain_index=round(pain, 2),
+            ))
+        return result
+
+    def step_drilldown(self, step: str, days: int = 7) -> dict:
+        sem = _semantic_exit_placeholders()
+        day_str = f"-{days} days"
+        by_repo = self._query(f"""
+SELECT repo, COUNT(*) AS runs,
+  SUM(CASE WHEN exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END) AS failures,
+  ROUND(AVG(duration_ms), 1) AS avg_ms
+FROM hook_metrics
+WHERE step = ? AND ts > datetime('now', ?)
+GROUP BY repo ORDER BY runs DESC LIMIT 10
+""", (step, day_str))
+        daily = self._query(f"""
+SELECT DATE(ts) AS day, COUNT(*) AS runs,
+  SUM(CASE WHEN exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END) AS failures
+FROM hook_metrics
+WHERE step = ? AND ts > datetime('now', ?)
+GROUP BY day ORDER BY day
+""", (step, day_str))
+        exit_codes = self._query("""
+SELECT exit_code, COUNT(*) AS count
+FROM hook_metrics
+WHERE step = ? AND ts > datetime('now', ?)
+GROUP BY exit_code ORDER BY count DESC
+""", (step, day_str))
+        return {
+            "by_repo": [(repo, _int(runs), _int(failures), float(avg or 0))
+                        for repo, runs, failures, avg in by_repo],
+            "daily": [(day, _int(runs), _int(failures))
+                      for day, runs, failures in daily],
+            "exit_codes": [(int(code) if code is not None else None, _int(cnt))
+                           for code, cnt in exit_codes],
+        }
+
+    def repo_profiles(self, days: int = 7) -> list[RepoProfile]:
+        sem = _semantic_exit_placeholders()
+        user = getpass.getuser()
+        has_session = self._has_session_column()
+        session_col = "COUNT(DISTINCT session)" if has_session else "0"
+        day_str = f"-{days} days"
+        rows = self._query(f"""
+SELECT
+  COALESCE(NULLIF(REPLACE(repo, '/Users/{user}/Code/', ''), ''), '(global/unknown)') AS project,
+  COUNT(*) AS total_runs,
+  SUM(CASE WHEN exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END) AS failures,
+  ROUND(100.0 * SUM(CASE WHEN exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END)
+        / NULLIF(COUNT(*), 0), 1) AS fail_rate,
+  COUNT(DISTINCT step) AS distinct_steps,
+  COALESCE(SUM(duration_ms), 0) AS overhead_ms,
+  ROUND(SUM(duration_ms) / 1000.0 / 60.0, 2) AS overhead_min,
+  {session_col} AS session_count
+FROM hook_metrics WHERE ts > datetime('now', ?)
+GROUP BY repo ORDER BY SUM(duration_ms) DESC
+""", (day_str,))
+        result = []
+        for row in rows:
+            project, total_runs, failures, fail_rate, distinct_steps, overhead_ms, overhead_min, session_count = row
+            sc = _int(session_count)
+            density = _int(distinct_steps) / sc if sc > 0 else 0.0
+            result.append(RepoProfile(
+                repo=project,
+                total_runs=_int(total_runs),
+                failures=_int(failures),
+                fail_rate=_opt_float(fail_rate),
+                distinct_steps=_int(distinct_steps),
+                overhead_ms=_int(overhead_ms),
+                overhead_min=float(overhead_min or 0),
+                session_count=sc,
+                guardrail_density=round(density, 2),
+            ))
+        return result
+
+    def under_instrumented_repos(self, days: int = 7) -> list[tuple[str, int]]:
+        user = getpass.getuser()
+        day_str = f"-{days} days"
+        rows = self._query(f"""
+SELECT
+  COALESCE(NULLIF(REPLACE(repo, '/Users/{user}/Code/', ''), ''), '(global/unknown)') AS project,
+  COUNT(DISTINCT step) AS distinct_steps,
+  COUNT(*) AS runs
+FROM hook_metrics WHERE ts > datetime('now', ?)
+GROUP BY repo
+HAVING distinct_steps < {config.MIN_STEPS_FOR_COVERAGE}
+   AND runs >= {config.MIN_RUNS_FOR_TREND}
+ORDER BY runs DESC
+""", (day_str,))
+        return [(project, _int(steps)) for project, steps, _ in rows]
+
+    def session_list(self, days: int = 7, limit: int = 20) -> list[SessionSummary]:
+        if not self._has_session_column():
+            return []
+        sem = _semantic_exit_placeholders()
+        day_str = f"-{days} days"
+        rows = self._query(f"""
+SELECT
+  h.session,
+  MIN(h.ts) AS first_ts,
+  MAX(h.ts) AS last_ts,
+  CAST((JULIANDAY(MAX(h.ts)) - JULIANDAY(MIN(h.ts))) * 86400 AS INTEGER) AS duration_s,
+  COUNT(DISTINCT h.id) AS hook_runs,
+  SUM(CASE WHEN h.exit_code != 0 AND h.step NOT IN ({sem}) THEN 1 ELSE 0 END) AS hook_failures,
+  COUNT(DISTINCT a.id) AS tool_uses,
+  COALESCE(SUM(h.duration_ms), 0) AS overhead_ms,
+  COUNT(DISTINCT h.step) AS distinct_steps
+FROM hook_metrics h
+LEFT JOIN audit_events a ON h.session = a.session
+WHERE h.session IS NOT NULL AND h.ts > datetime('now', ?)
+GROUP BY h.session
+ORDER BY hook_failures DESC, overhead_ms DESC
+LIMIT ?
+""", (day_str, limit))
+        return [
+            SessionSummary(
+                session_id=session_id,
+                first_ts=first_ts,
+                last_ts=last_ts,
+                duration_s=_int(duration_s),
+                hook_runs=_int(hook_runs),
+                hook_failures=_int(hook_failures),
+                tool_uses=_int(tool_uses),
+                overhead_ms=_int(overhead_ms),
+                distinct_steps=_int(distinct_steps),
+            )
+            for session_id, first_ts, last_ts, duration_s, hook_runs,
+                hook_failures, tool_uses, overhead_ms, distinct_steps in rows
+        ]
+
+    def session_timeline(self, session_id: str) -> list[SessionTimeline]:
+        if not self._has_session_column():
+            return []
+        rows = self._query("""
+SELECT ts, 'hook' AS source, step AS name, duration_ms, exit_code,
+  SUBSTR(COALESCE(cmd, ''), 1, 120) AS detail
+FROM hook_metrics
+WHERE session = ?
+UNION ALL
+SELECT ts, 'tool' AS source, tool AS name, 0 AS duration_ms, NULL AS exit_code,
+  SUBSTR(COALESCE(input, ''), 1, 120) AS detail
+FROM audit_events
+WHERE session = ?
+ORDER BY ts
+""", (session_id, session_id))
+        return [
+            SessionTimeline(
+                ts=ts,
+                source=source,
+                name=name,
+                duration_ms=_int(duration_ms),
+                exit_code=int(exit_code) if exit_code is not None else None,
+                detail=detail or "",
+            )
+            for ts, source, name, duration_ms, exit_code, detail in rows
+        ]
+
     # ── Verbose failure section helpers ───────────────────────────────────────
 
     def failures_by_step(self) -> list[tuple[str, int]]:
@@ -1032,8 +1300,11 @@ HAVING (cur_r = 0 AND prev_r >= 5) OR (prev_r = 0 AND cur_r >= 5)
 
     def _has_session_column(self) -> bool:
         """Check whether hook_metrics has the session column (added in Phase 1)."""
+        if hasattr(self, "_session_col_cached"):
+            return self._session_col_cached
         rows = self._query("PRAGMA table_info(hook_metrics)")
-        return any(r[1] == "session" for r in rows)
+        self._session_col_cached = any(r[1] == "session" for r in rows)
+        return self._session_col_cached
 
     def spans_raw(self, hours: int = 24, limit: int = 10000) -> list[tuple]:
         """Return hook_metrics rows for span export.

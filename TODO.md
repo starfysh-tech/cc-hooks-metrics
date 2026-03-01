@@ -8,7 +8,7 @@
 
 Five independently implementable phases. Each has a plan file in `docs/plans/`. Start with Phase 1 — all others depend on it or are independent. See roadmap: `.claude/plans/wise-dancing-raven.md`
 
-- [ ] **Phase 1: Session Correlation + OTEL Span Model + Expanded Event Capture** — add `session` column to `hook_metrics`, widen audit-logger to `*` matcher, add `event-logger.sh` for 5 new event types, introduce `spans.py` with OTEL-shaped span model, add `--export-spans` CLI flag. See plan: `docs/plans/2026-02-28-feat-session-correlation-otel-spans-plan.md`
+- [x] **Phase 1: Session Correlation + OTEL Span Model + Expanded Event Capture** — `session` column in `hook_metrics`, `spans.py` with OTel span model, `--export-spans` CLI flag. Shipped in `feat/phase1-session-correlation-otel-spans`. See plan: `docs/plans/2026-02-28-feat-session-correlation-otel-spans-plan.md`
 - [ ] **Phase 2: Local Analyses** — add per-step reliability (p50/p90/p99 + pain index), per-repo health profiles, and per-session summaries/timelines to `db.py`. Step/repo queries are Phase 1-independent; session queries require Phase 1 `session` column. See plan: `docs/plans/2026-02-28-feat-local-analyses-step-repo-session-plan.md`
 - [ ] **Phase 3: TUI Screens + CLI Integration** — add `SessionsScreen` (press `s`) and `StepDrillScreen` (press `t`) to the TUI; add `--sessions` and `--step NAME` CLI flags; fix TUI subtitle bug on screen pop. Requires Phase 2 query layer. See plan: `docs/plans/2026-02-28-feat-tui-screens-sessions-steps-plan.md`
 - [ ] **Phase 4: Advisor + Feedback Loops** — add `advisor.py` with guardrail tuning suggestions and periodic privacy-safe summaries; add `AdvisorScreen` (press `a`); add `--summary daily|weekly` and `--export-summary` CLI flags. Requires Phase 2 `step_reliability()`; hot sequences require Phase 1. See plan: `docs/plans/2026-02-28-feat-advisor-feedback-loops-plan.md`
@@ -27,4 +27,8 @@ Enhancements identified but out of scope for current work. Review before plannin
 - [ ] **TUI subtitle accuracy** — after returning from the Detail screen, the app subtitle stays as "Detail" until refresh; should restore dashboard subtitle on pop
 - [ ] **Configurable thresholds** — `config.py` constants (regression %, timeout %, slow run threshold) are hardcoded; a user-level config file would allow tuning without editing source
 - [ ] **audit-logger.sh: single `head` read** — currently reads `$TMPFILE` three times (`tool`, `session`, `full_payload`); consolidate into one `payload_head=$(head -c 65536 "$TMPFILE")` variable (PR #2 review comment)
-- [ ] **spans.py: replace slice unpacking with full destructure** — `row[:7]` and `row[10:15]` are brittle if column order changes; use `row_id, ts, hook, step, cmd, exit_code, duration_ms, _, _, _, branch, sha, host, repo, session = row` (PR #2 review comment)
+- [x] **spans.py: replace slice unpacking with full destructure** — done in PR #2 fix-up commit
+- [ ] **spans.py: add `__post_init__` validation to `Span`** — validate `len(trace_id)==32`, `len(span_id)==16`, `kind in (1,3)`, `status_code in (1,2)`, `start <= end` (PR #2 review comment)
+- [ ] **spans.py: consider `IntEnum` for `SpanKind` and `StatusCode`** — replaces magic ints with self-documenting values, serializes to int naturally (PR #2 review comment)
+- [ ] **spans.py / db.py: no test coverage** — factory functions, timestamp parsing, redaction logic, ID generation all untested; privacy-sensitive export pipeline warrants attention (PR #2 review comment)
+- [ ] **docstrings: remove phase-lifecycle references** — `_has_session_column` says "added in Phase 1", `spans_to_dict` says "defer to Phase 5"; describe the *why* instead (PR #2 review comment)

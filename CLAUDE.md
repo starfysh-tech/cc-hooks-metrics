@@ -70,10 +70,11 @@ Rewrite of the original 1331-line bash report in Python (Textual 8.0.0 + Rich 14
 hooks_report/
   __init__.py       # empty
   __main__.py       # entry: export/static/tui dispatch, lazy Textual import
-  cli.py            # argparse: --export, --verbose, --static, --db
-  config.py         # STEP_TIMEOUTS, thresholds, SKIP_HOOKS_PATTERN
+  cli.py            # argparse: --export, --export-spans, --verbose, --static, --db, --include-sensitive
+  config.py         # STEP_TIMEOUTS, SEMANTIC_EXIT_STEPS, thresholds, SKIP_HOOKS_PATTERN
   db.py             # HooksDB: typed dataclasses + SQLite queries
   render.py         # Rich helpers: fmt_dur, bar_chart, trend_badge, pct_change, traffic_light_grid
+  spans.py          # OTel span model: Span dataclass, hook_metric_to_span, audit_event_to_span, spans_to_dict
   static.py         # Rich Console output: compact sections + verbose sections + export_json
   tui.py            # Textual app: HooksReportApp (dashboard) + DetailScreen
 ```
@@ -103,9 +104,12 @@ PYTHONPATH="$(dirname "$0")" exec python3 -m hooks_report "$@"
 
 **--export mode** — OTel-aligned JSON, schema `claude.hooks.trends/v1`, metric names `claude.hooks.*`, attributes `hook.step` / `vcs.repository`.
 
+**--export-spans mode** — OTel span JSON, schema `claude.hooks.spans/v1`. One span per hook_metrics row (`hook.{step}`, kind=3 CLIENT) and per audit_events row (`tool.{tool_name}`, kind=1 INTERNAL). Redacts sensitive fields by default; `--include-sensitive` disables redaction. Skip warnings on corrupt rows go to stderr.
+
 ## Key conventions
 
-- `codex-review` uses semantic exit codes (exit 1 = findings, not failure) — excluded from failure counts via `step NOT IN ('codex-review')`, tracked separately
+- `codex-review` uses semantic exit codes (exit 1 = findings, not failure) — excluded from failure counts via `step NOT IN ('codex-review')`, tracked separately; `SEMANTIC_EXIT_STEPS` set in `config.py` controls this for span export too
+- OTel SpanKind: hooks → `kind=3` (CLIENT — spawn external processes); tools (audit events) → `kind=1` (INTERNAL — Claude-internal operations)
 - `SKIP_HOOKS` regex (`fake-fail|ok-step|echo|test-hook|main`) filters noise from coverage gap detection — use `re.fullmatch()` not `re.search()`
 - `ROUND(...,0)` in SQLite returns float — use `int(round(float(val)))` not `int(val)`
 - NULL failure_rate → `None` in Python, `null` in JSON (not `0`)

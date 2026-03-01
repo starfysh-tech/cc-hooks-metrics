@@ -14,7 +14,7 @@ trap 'rm -f "$TMPFILE"' EXIT
 cat > "$TMPFILE"
 
 # jq guard — exit 0 so missing jq never blocks Claude Code
-command -v jq >/dev/null 2>&1 || { cat "$TMPFILE"; exit 0; }
+command -v jq >/dev/null 2>&1 || { echo "warn: audit-logger: jq not found, audit data not collected" >&2; cat "$TMPFILE"; exit 0; }
 
 ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
@@ -34,7 +34,7 @@ session=$(printf '%s' "$session" | tr -d '`$\n\r')
 full_payload=$(head -c 65536 "$TMPFILE")
 full_payload=$(printf '%s' "$full_payload" | tr -d '`$')
 
-sqlite3 "$HOOKS_DB" >/dev/null <<SQL || true
+sqlite3 "$HOOKS_DB" >/dev/null <<SQL || echo "warn: audit-logger: sqlite3 insert failed" >&2
 PRAGMA busy_timeout=1000;
 BEGIN IMMEDIATE;
 INSERT INTO audit_events (ts, session, tool, input)

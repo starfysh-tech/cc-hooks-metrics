@@ -6,6 +6,8 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from . import config
+
 
 @dataclass
 class Span:
@@ -13,10 +15,10 @@ class Span:
     trace_id: str           # 32-char hex; derived from session_id via SHA256
     span_id: str            # 16-char hex; prefix byte + row id (human-readable, sort-stable)
     name: str               # "hook.{step}" or "tool.{tool_name}"
-    kind: int               # 1=INTERNAL (hooks), 3=CLIENT (tools)
+    kind: int               # 3=CLIENT (hooks spawn external processes), 1=INTERNAL (tools are Claude-internal)
     start_time_unix_nano: int
     end_time_unix_nano: int
-    status_code: int        # 0=UNSET, 1=OK, 2=ERROR
+    status_code: int        # 1=OK, 2=ERROR (OTel spec also defines 0=UNSET, unused here)
     attributes: dict
 
 
@@ -40,10 +42,7 @@ def _ts_to_nanos(ts_str: str) -> int:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
     except (ValueError, AttributeError):
-        try:
-            dt = datetime.fromisoformat(ts_str).replace(tzinfo=timezone.utc)
-        except (ValueError, AttributeError):
-            return 0
+        return 0
     return int(dt.timestamp() * 1_000_000_000)
 
 
@@ -76,16 +75,21 @@ def hook_metric_to_span(row: tuple, redact: bool = True) -> Span:
     Row order: id, ts, hook, step, cmd, exit_code, duration_ms,
                real_s, user_s, sys_s, branch, sha, host, repo, session
     """
-    row_id, ts, hook, step, cmd, exit_code, duration_ms = row[:7]
-    branch, sha, host, repo, session = row[10:15]
+    row_id, ts, hook, step, cmd, exit_code, duration_ms, _, _, _, branch, sha, host, repo, session = row
 
     start_ns = _ts_to_nanos(ts)
     if start_ns == 0:
         raise ValueError(f"corrupt timestamp: {ts!r}")
-    dur = int(duration_ms or 0)
+    if duration_ms is None:
+        raise ValueError("duration_ms is NULL")
+    dur = int(duration_ms)
     end_ns = start_ns + dur * 1_000_000
 
-    status_code = 2 if exit_code != 0 else 1  # ERROR or OK
+    # codex-review uses semantic exit codes: exit 1 = findings detected, not failure
+    if step in config.SEMANTIC_EXIT_STEPS and exit_code == 1:
+        status_code = 1
+    else:
+        status_code = 2 if exit_code != 0 else 1
 
     repo_display = os.path.basename(repo.rstrip("/")) if repo else ""
 
@@ -106,7 +110,7 @@ def hook_metric_to_span(row: tuple, redact: bool = True) -> Span:
         trace_id=trace_id_from_session(session),
         span_id=span_id_from_row_id(row_id, "h"),
         name=f"hook.{step}",
-        kind=1,
+        kind=3,
         start_time_unix_nano=start_ns,
         end_time_unix_nano=end_ns,
         status_code=status_code,
@@ -122,6 +126,8 @@ def audit_event_to_span(row: tuple, redact: bool = True) -> Span:
     row_id, ts, session, tool, input_json = row
 
     start_ns = _ts_to_nanos(ts)
+    if start_ns == 0:
+        raise ValueError(f"corrupt timestamp: {ts!r}")
     end_ns = start_ns  # tool-use events have no duration
 
     tool_input = _redact_tool_input(input_json) if redact else input_json
@@ -135,7 +141,7 @@ def audit_event_to_span(row: tuple, redact: bool = True) -> Span:
         trace_id=trace_id_from_session(session),
         span_id=span_id_from_row_id(row_id, "a"),
         name=f"tool.{tool}",
-        kind=3,
+        kind=1,
         start_time_unix_nano=start_ns,
         end_time_unix_nano=end_ns,
         status_code=2 if tool.startswith("PostToolUseFailure:") else 1,

@@ -20,16 +20,21 @@ def main():
             audit_rows = db.audit_spans_raw()
             redact = not args.include_sensitive
             spans = []
+            skip_count = 0
             for r in hook_rows:
                 try:
                     spans.append(hook_metric_to_span(r, redact=redact))
-                except Exception as e:
+                except (ValueError, IndexError, TypeError) as e:
+                    skip_count += 1
                     print(f"warn: skipped hook row {r[0]}: {e}", file=sys.stderr)
             for r in audit_rows:
                 try:
                     spans.append(audit_event_to_span(r, redact=redact))
-                except Exception as e:
+                except (ValueError, IndexError, TypeError) as e:
+                    skip_count += 1
                     print(f"warn: skipped audit row {r[0]}: {e}", file=sys.stderr)
+            if skip_count:
+                print(f"warn: {skip_count} row(s) skipped due to conversion errors", file=sys.stderr)
             spans.sort(key=lambda s: s.start_time_unix_nano)
             print(json.dumps(spans_to_dict(spans), indent=2))
         elif args.export:

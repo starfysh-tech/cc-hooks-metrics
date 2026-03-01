@@ -1,4 +1,4 @@
-# Gitleaks configuration for CommitCraft
+# Gitleaks configuration for cc-hooks-metrics
 # https://github.com/gitleaks/gitleaks
 
 title = "gitleaks config"

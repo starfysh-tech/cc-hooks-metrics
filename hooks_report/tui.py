@@ -233,7 +233,10 @@ class HooksReportApp(App):
     def action_export(self) -> None:
         import json
         from pathlib import Path
-        data = self.db.export_data()
-        out = Path("/tmp/hooks-export.json")
-        out.write_text(json.dumps(data, indent=2))
-        self.notify(f"Exported to {out}", title="Export")
+        try:
+            data = self.db.export_data()
+            out = Path("/tmp/hooks-export.json")
+            out.write_text(json.dumps(data, indent=2))
+            self.notify(f"Exported to {out}", title="Export")
+        except Exception as e:
+            self.notify(str(e), severity="error", title="Export failed")

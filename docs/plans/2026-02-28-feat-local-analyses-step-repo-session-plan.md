@@ -121,7 +121,8 @@ Per-step p50/p90/p99 via window functions, pain index = `total_s * (fail_rate / 
 ```python
 def step_reliability(self, days: int = 7, repo: str | None = None) -> list[StepReliability]:
     sem = _semantic_exit_placeholders()
-    repo_filter = f"AND repo = '{repo}'" if repo else ""
+    repo_filter = "AND repo = ?" if repo else ""
+    params = [repo] if repo else []
 
     rows = self._query(f"""
     WITH ranked AS (
@@ -132,7 +133,7 @@ def step_reliability(self, days: int = 7, repo: str | None = None) -> list[StepR
       WHERE ts > datetime('now', '-{days} days')
         AND duration_ms > 0
         {repo_filter}
-    )
+    )""", params)
     SELECT step,
       MAX(cnt) AS total_runs,
       SUM(CASE WHEN exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END) AS failures,
@@ -194,9 +195,9 @@ def step_drilldown(self, step: str, days: int = 7) -> dict:
       ROUND(AVG(duration_ms), 1) AS avg_ms,
       MAX(duration_ms) AS max_ms
     FROM hook_metrics
-    WHERE step = '{step}' AND ts > datetime('now', '-{days} days')
+    WHERE step = ? AND ts > datetime('now', '-{days} days')
     GROUP BY repo ORDER BY runs DESC
-    """)
+    """, [step])
 
     # Per-day trend (last N days)
     daily_rows = self._query(f"""
@@ -205,7 +206,7 @@ def step_drilldown(self, step: str, days: int = 7) -> dict:
       SUM(CASE WHEN exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END) AS failures,
       ROUND(AVG(duration_ms), 1) AS avg_ms
     FROM hook_metrics
-    WHERE step = '{step}' AND ts > datetime('now', '-{days} days')
+    WHERE step = ? AND ts > datetime('now', '-{days} days')
     GROUP BY DATE(ts) ORDER BY day
     """)
 
@@ -213,9 +214,9 @@ def step_drilldown(self, step: str, days: int = 7) -> dict:
     exit_rows = self._query(f"""
     SELECT exit_code, COUNT(*) AS cnt
     FROM hook_metrics
-    WHERE step = '{step}' AND ts > datetime('now', '-{days} days')
+    WHERE step = ? AND ts > datetime('now', '-{days} days')
     GROUP BY exit_code ORDER BY cnt DESC
-    """)
+    """, [step])
 
     return {
         "step": step,
@@ -393,18 +394,18 @@ def session_timeline(self, session_id: str) -> list[SessionTimeline]:
     if not self._has_session_column():
         return []
 
-    rows = self._query(f"""
+    rows = self._query("""
     SELECT ts, 'hook' AS source, step AS name, duration_ms, exit_code,
       COALESCE(NULLIF(TRIM(cmd), ''), '(unknown)') AS detail
     FROM hook_metrics
-    WHERE session = '{session_id}'
+    WHERE session = ?
     UNION ALL
     SELECT ts, 'tool' AS source, tool AS name, 0 AS duration_ms, NULL AS exit_code,
       SUBSTR(input, 1, 120) AS detail
     FROM audit_events
-    WHERE session = '{session_id}'
+    WHERE session = ?
     ORDER BY ts
-    """)
+    """, [session_id, session_id])
 
     return [
         SessionTimeline(

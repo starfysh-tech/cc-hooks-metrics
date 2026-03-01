@@ -219,7 +219,8 @@ def section_wow_compact(console: Console, db: HooksDB, verbose: bool = False) ->
             console.print(line)
 
     # Latency regressions (SLOW — always shown)
-    console.print()
+    if lat_regs:
+        console.print()
     for r in lat_regs:
         line = Text()
         line.append_text(render.trend_badge("SLOW"))
@@ -252,8 +253,7 @@ def section_projects_compact(console: Console, db: HooksDB) -> None:
 
     projects = db.projects_compact()
     for p in projects:
-        fail_i = int(p.fail_rate or 0)
-        if fail_i > 0:
+        if (p.fail_rate or 0) > 0:
             line = Text()
             line.append(f"  {p.project:<32}  {p.total_min:>7.1f} min  {p.runs:>6} runs  ")
             line.append(f"{p.fail_rate:.1f}% fail rate", style="red")

@@ -1,4 +1,4 @@
-# Pre-commit framework configuration for CommitCraft
+# Pre-commit framework configuration for cc-hooks-metrics
 # https://pre-commit.com
 
 repos:

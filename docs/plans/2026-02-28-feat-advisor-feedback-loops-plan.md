@@ -136,7 +136,7 @@ def guardrail_tuning(db: HooksDB, days: int = 7) -> list[TuningSuggestion]:
                 severity="yellow",
             ))
         # Condition 4: no timeout + extremely slow p99
-        if not has_timeout and s.p99_ms > config.TUNING_MISSING_TIMEOUT_P99_MS:
+        elif not has_timeout and s.p99_ms > config.TUNING_MISSING_TIMEOUT_P99_MS:
             suggestions.append(TuningSuggestion(
                 category="add-timeout",
                 step=s.step,

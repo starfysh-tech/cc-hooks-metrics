@@ -4,7 +4,10 @@
       "Bash(CLAUDE_HOOKS_DB=/tmp/empty-test.db python3:*)",
       "Bash(sqlite3:*)",
       "Bash(jq:*)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(CLAUDE_HOOKS_DB=/nonexistent/path.db python3:*)",
+      "Bash(rsync:*)",
+      "Bash(~/.claude/hooks/hooks-report.sh:*)"
     ]
   }
 }

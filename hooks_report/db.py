@@ -10,6 +10,10 @@ from typing import Optional
 from . import config
 
 
+class HooksDBError(Exception):
+    """Raised when a database query fails."""
+
+
 # ── Dataclasses ──────────────────────────────────────────────────────────────
 
 
@@ -176,10 +180,16 @@ class HooksDB:
         return self._conn
 
     def _query(self, sql: str) -> list[tuple]:
-        return self._connect().execute(sql).fetchall()
+        try:
+            return self._connect().execute(sql).fetchall()
+        except sqlite3.Error as e:
+            raise HooksDBError(f"{self.path}: {e} — SQL: {sql[:200]}") from e
 
-    def _query_one(self, sql: str) -> tuple:
-        return self._connect().execute(sql).fetchone()
+    def _query_one(self, sql: str) -> Optional[tuple]:
+        try:
+            return self._connect().execute(sql).fetchone()
+        except sqlite3.Error as e:
+            raise HooksDBError(f"{self.path}: {e} — SQL: {sql[:200]}") from e
 
     def close(self):
         if self._conn is not None:
@@ -409,8 +419,7 @@ FROM hook_metrics
 WHERE ts > datetime('now','-14 days') AND step NOT IN ({sem})
 GROUP BY step
 HAVING prev_f > 0 AND cur_f < prev_f AND CAST(prev_f - cur_f AS REAL)/prev_f > {config.FAILURE_REGRESSION_PCT}
-   AND (SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END) +
-        SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END)) >= {config.MIN_RUNS_FOR_TREND}
+   AND (cur_r + prev_r) >= {config.MIN_RUNS_FOR_TREND}
 ORDER BY (prev_f - cur_f) DESC
 LIMIT 3
 """)
@@ -585,7 +594,7 @@ LIMIT 5
         fail_rows = self._query(f"""
 SELECT step, COUNT(*) AS cnt
 FROM hook_metrics
-WHERE exit_code != 0 AND step NOT IN ({sem})
+WHERE exit_code != 0 AND exit_code != 127 AND step NOT IN ({sem})
   AND ts > datetime('now', '-1 day')
 GROUP BY step
 ORDER BY cnt DESC
@@ -804,7 +813,6 @@ SELECT
 FROM hook_metrics WHERE ts > datetime('now', '-7 days')
 GROUP BY repo, step ORDER BY repo, total_ms DESC
 """)
-        # Return top 3 per project
         result: list[tuple[str, str, int, int]] = []
         counts: dict[str, int] = {}
         for proj, step, runs, tms in rows:
@@ -845,8 +853,7 @@ FROM hook_metrics
 WHERE ts > datetime('now','-14 days') AND step NOT IN ({sem})
 GROUP BY step
 HAVING prev_f > 0 AND cur_f < prev_f AND CAST(prev_f - cur_f AS REAL)/prev_f > {config.FAILURE_REGRESSION_PCT}
-   AND (SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END) +
-        SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END)) >= {config.MIN_RUNS_FOR_TREND}
+   AND (cur_r + prev_r) >= {config.MIN_RUNS_FOR_TREND}
 ORDER BY (prev_f - cur_f) DESC
 """)
         return [FailureTrend(step=step, cur_f=_int(cf), prev_f=_int(pf), cur_r=_int(cr), prev_r=_int(pr))
@@ -877,7 +884,6 @@ ORDER BY (cur_avg - prev_avg) DESC
         sem = _semantic_exit_placeholders()
         ts_now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        # Summary (wow + slow counts)
         row = self._query_one(f"""
 SELECT
   SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END) AS cur_runs,
@@ -904,7 +910,6 @@ FROM hook_metrics WHERE ts > datetime('now','-14 days')
         cur_slow = _int(row[8])
         prev_slow = _int(row[9])
 
-        # Failure trends (both directions)
         fail_rows = self._query(f"""
 SELECT step,
   SUM(CASE WHEN ts > datetime('now','-7 days') AND exit_code != 0 THEN 1 ELSE 0 END) AS cur_f,

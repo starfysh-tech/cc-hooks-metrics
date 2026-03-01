@@ -43,9 +43,9 @@ def trend_badge(badge_type: str) -> Text:
 
 
 def pct_change(cur: float, prev: float, polarity: str = "neutral") -> Text:
-    """Colored percentage change. Returns Text('(new)') if prev == 0."""
+    """Colored percentage change. Returns Text('new') if prev == 0."""
     if prev == 0:
-        return Text("(new)", style="cyan")
+        return Text("new", style="cyan")
     pct = (cur - prev) / prev * 100
     label = f"{pct:+.1f}%"
     style = ""

@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 from . import config
@@ -11,7 +12,18 @@ def main():
     db = HooksDB(db_path)
 
     try:
-        if args.export:
+        if args.export_spans:
+            from .spans import hook_metric_to_span, audit_event_to_span, spans_to_dict
+            hook_rows = db.spans_raw()
+            audit_rows = db.audit_spans_raw()
+            redact = not args.include_sensitive
+            spans = (
+                [hook_metric_to_span(r, redact=redact) for r in hook_rows]
+                + [audit_event_to_span(r, redact=redact) for r in audit_rows]
+            )
+            spans.sort(key=lambda s: s.start_time_unix_nano)
+            print(json.dumps(spans_to_dict(spans), indent=2))
+        elif args.export:
             from .static import export_json
             export_json(db)
         elif args.static or not sys.stdout.isatty():

@@ -167,8 +167,11 @@ class HooksDB:
                         duration_ms INTEGER NOT NULL, real_s REAL NOT NULL,
                         user_s REAL NOT NULL, sys_s REAL NOT NULL,
                         branch TEXT DEFAULT '', sha TEXT DEFAULT '',
-                        host TEXT DEFAULT '', repo TEXT DEFAULT ''
+                        host TEXT DEFAULT '', repo TEXT DEFAULT '',
+                    session TEXT DEFAULT ''
                     );
+                    CREATE INDEX IF NOT EXISTS idx_hook_metrics_session
+                      ON hook_metrics(session) WHERE session != '';
                     CREATE TABLE IF NOT EXISTS audit_events (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         ts TEXT NOT NULL, session TEXT NOT NULL,
@@ -179,15 +182,15 @@ class HooksDB:
             self._conn = sqlite3.connect(f"file:{self.path}?mode=ro", uri=True)
         return self._conn
 
-    def _query(self, sql: str) -> list[tuple]:
+    def _query(self, sql: str, params: tuple = ()) -> list[tuple]:
         try:
-            return self._connect().execute(sql).fetchall()
+            return self._connect().execute(sql, params).fetchall()
         except sqlite3.Error as e:
             raise HooksDBError(f"{self.path}: {e} — SQL: {sql[:200]}") from e
 
-    def _query_one(self, sql: str) -> Optional[tuple]:
+    def _query_one(self, sql: str, params: tuple = ()) -> Optional[tuple]:
         try:
-            return self._connect().execute(sql).fetchone()
+            return self._connect().execute(sql, params).fetchone()
         except sqlite3.Error as e:
             raise HooksDBError(f"{self.path}: {e} — SQL: {sql[:200]}") from e
 
@@ -1024,3 +1027,45 @@ HAVING (cur_r = 0 AND prev_r >= 5) OR (prev_r = 0 AND cur_r >= 5)
             "latency_trends": latency_trends,
             "coverage_gaps": coverage_gaps,
         }
+
+    # ── Span export ───────────────────────────────────────────────────────────
+
+    def _has_session_column(self) -> bool:
+        """Check whether hook_metrics has the session column (added in Phase 1)."""
+        rows = self._query("PRAGMA table_info(hook_metrics)")
+        return any(r[1] == "session" for r in rows)
+
+    def spans_raw(self, hours: int = 24, limit: int = 10000) -> list[tuple]:
+        """Return hook_metrics rows for span export.
+
+        Gracefully degrades on old DBs without the session column — pads empty string.
+        Row order: id, ts, hook, step, cmd, exit_code, duration_ms,
+                   real_s, user_s, sys_s, branch, sha, host, repo, session
+        """
+        has_session = self._has_session_column()
+        col_sel = (
+            "id, ts, hook, step, cmd, exit_code, duration_ms, "
+            "real_s, user_s, sys_s, branch, sha, host, repo"
+            + (", session" if has_session else "")
+        )
+        rows = self._query(
+            f"SELECT {col_sel} FROM hook_metrics "
+            "WHERE ts > datetime('now', ?) ORDER BY ts LIMIT ?",
+            (f"-{hours} hours", limit),
+        )
+        if not has_session:
+            return [r + ("",) for r in rows]
+        return rows
+
+    def audit_spans_raw(self, hours: int = 24, limit: int = 10000) -> list[tuple]:
+        """Return audit_events rows for span export.
+
+        Truncates input to 4KB in the query — production rows can reach 114KB.
+        Row order: id, ts, session, tool, input
+        """
+        return self._query(
+            "SELECT id, ts, session, tool, substr(input, 1, 4096) "
+            "FROM audit_events "
+            "WHERE ts > datetime('now', ?) ORDER BY ts LIMIT ?",
+            (f"-{hours} hours", limit),
+        )

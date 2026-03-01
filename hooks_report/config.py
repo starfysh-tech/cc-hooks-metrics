@@ -12,7 +12,20 @@ STEP_TIMEOUTS: dict[str, int] = {  # milliseconds
     "stop-checks": 30000,
 }
 SEMANTIC_EXIT_STEPS = {"codex-review"}
-SKIP_HOOKS_PATTERN = re.compile(r"^(fake-fail|ok-step|echo|test-hook|main)$")
+SKIP_HOOKS_PATTERN = re.compile(r"^(fake-fail|ok-step|echo|test-hook|main|event-log)$")
+
+# Event types captured by audit-logger.sh
+CLAUDE_EVENTS: set[str] = {
+    "PostToolUse",
+    "PostToolUseFailure",
+    "SubagentStart",
+    "SubagentStop",
+    "SessionEnd",
+    "UserPromptSubmit",
+}
+
+# Hook steps triggered by git operations (not Claude tool-use)
+GIT_HOOKS: set[str] = {"pre-commit", "commit-msg", "prepare-commit-msg"}
 IMPACT_THRESHOLD_S = 30
 REGRESSION_PCT_THRESHOLD = 0.15
 FAILURE_REGRESSION_PCT = 0.10

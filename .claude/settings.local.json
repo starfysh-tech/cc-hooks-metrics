@@ -7,7 +7,9 @@
       "Bash(done)",
       "Bash(CLAUDE_HOOKS_DB=/nonexistent/path.db python3:*)",
       "Bash(rsync:*)",
-      "Bash(~/.claude/hooks/hooks-report.sh:*)"
+      "Bash(~/.claude/hooks/hooks-report.sh:*)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "Bash(echo \"Research Insights count: $?\")"
     ]
   }
 }

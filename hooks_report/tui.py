@@ -10,7 +10,7 @@ from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 
 from . import config, render
-from .db import HooksDB
+from .db import HooksDB, HooksDBError
 
 
 def _perf_rich_table(db: HooksDB) -> Table:
@@ -238,5 +238,5 @@ class HooksReportApp(App):
             out = Path("/tmp/hooks-export.json")
             out.write_text(json.dumps(data, indent=2))
             self.notify(f"Exported to {out}", title="Export")
-        except Exception as e:
+        except (HooksDBError, OSError, ValueError) as e:
             self.notify(str(e), severity="error", title="Export failed")

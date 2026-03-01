@@ -11,6 +11,13 @@ _init_hooks_db() {
     if ! sqlite3 "$HOOKS_DB" "SELECT repo FROM hook_metrics LIMIT 0" >/dev/null 2>&1; then
       sqlite3 "$HOOKS_DB" "ALTER TABLE hook_metrics ADD COLUMN repo TEXT DEFAULT ''" >/dev/null 2>&1 || true
     fi
+    # Migrate existing DB: add session column if missing
+    if ! sqlite3 "$HOOKS_DB" "SELECT session FROM hook_metrics LIMIT 0" >/dev/null 2>&1; then
+      sqlite3 "$HOOKS_DB" >/dev/null 2>&1 <<'SQL' || true
+ALTER TABLE hook_metrics ADD COLUMN session TEXT DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_hook_metrics_session ON hook_metrics(session) WHERE session != '';
+SQL
+    fi
     return 0
   fi
 
@@ -37,12 +44,15 @@ CREATE TABLE IF NOT EXISTS hook_metrics (
     branch      TEXT DEFAULT '',
     sha         TEXT DEFAULT '',
     host        TEXT DEFAULT '',
-    repo        TEXT DEFAULT ''
+    repo        TEXT DEFAULT '',
+    session     TEXT DEFAULT ''
 );
+CREATE INDEX IF NOT EXISTS idx_hook_metrics_session
+  ON hook_metrics(session) WHERE session != '';
 SQL
 }
 
-# SQL single-quote escape (jq -c guarantees no literal newlines)
+# SQL single-quote escape (values sanitized with tr -d '\n\r' before interpolation)
 _sql_escape() {
   printf '%s' "$1" | sed "s/'/''/g"
 }

@@ -14,6 +14,16 @@ def parse_args():
         help="Output OTel-aligned JSON to stdout (no Rich/Textual)",
     )
     parser.add_argument(
+        "--export-spans",
+        action="store_true",
+        help="Export claude.hooks.spans/v1 JSON to stdout",
+    )
+    parser.add_argument(
+        "--include-sensitive",
+        action="store_true",
+        help="Include raw hostnames, full paths, and full tool inputs in span export (off by default)",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Add 7 legacy detail sections (static mode only)",

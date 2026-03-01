@@ -12,7 +12,8 @@ STEP_TIMEOUTS: dict[str, int] = {  # milliseconds
     "stop-checks": 30000,
 }
 SEMANTIC_EXIT_STEPS = {"codex-review"}
-SKIP_HOOKS_PATTERN = re.compile(r"^(fake-fail|ok-step|echo|test-hook|main)$")
+SKIP_HOOKS_PATTERN = re.compile(r"^(fake-fail|ok-step|echo|test-hook|main|event-log)$")
+
 IMPACT_THRESHOLD_S = 30
 REGRESSION_PCT_THRESHOLD = 0.15
 FAILURE_REGRESSION_PCT = 0.10

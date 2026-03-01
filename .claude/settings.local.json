@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(CLAUDE_HOOKS_DB=/tmp/empty-test.db python3:*)",
+      "Bash(sqlite3:*)",
+      "Bash(jq:*)",
+      "Bash(done)"
+    ]
+  }
+}

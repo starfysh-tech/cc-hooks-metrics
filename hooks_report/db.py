@@ -402,7 +402,9 @@ LIMIT 5
         rows = self._query(f"""
 SELECT step,
   SUM(CASE WHEN ts > datetime('now','-7 days') AND exit_code != 0 THEN 1 ELSE 0 END) AS cur_f,
-  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND exit_code != 0 THEN 1 ELSE 0 END) AS prev_f
+  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND exit_code != 0 THEN 1 ELSE 0 END) AS prev_f,
+  SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END) AS cur_r,
+  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END) AS prev_r
 FROM hook_metrics
 WHERE ts > datetime('now','-14 days') AND step NOT IN ({sem})
 GROUP BY step
@@ -414,8 +416,8 @@ LIMIT 3
 """)
 
         return [
-            FailureTrend(step=step, cur_f=_int(cf), prev_f=_int(pf), cur_r=0, prev_r=0)
-            for step, cf, pf in rows
+            FailureTrend(step=step, cur_f=_int(cf), prev_f=_int(pf), cur_r=_int(cr), prev_r=_int(pr))
+            for step, cf, pf, cr, pr in rows
         ]
 
     # ── latency_regressions() ────────────────────────────────────────────────
@@ -514,7 +516,6 @@ LIMIT 5
 
     def action_items(self) -> list[ActionItem]:
         items: list[ActionItem] = []
-        actioned_steps: set[str] = set()
         sem = _semantic_exit_placeholders()
 
         # Timeout items
@@ -536,7 +537,6 @@ GROUP BY step
                 detail=f"{step} max {max_i}ms vs {limit}ms limit ({pct}%)",
                 fix="Increase timeout or optimize script",
             ))
-            actioned_steps.add(step)
 
         # Broken hooks
         for bh in self.broken_hooks():
@@ -545,9 +545,8 @@ GROUP BY step
                 detail=f"{bh.step} — {bh.count} exit-127 (script path missing)",
                 fix=f"Verify {bh.cmd} exists at configured path",
             ))
-            actioned_steps.add(bh.step)
 
-        # Latency regressions (skip already-actioned steps)
+        # Latency regressions
         regr_rows = self._query(f"""
 SELECT step,
   ROUND(AVG(CASE WHEN ts > datetime('now','-7 days') THEN duration_ms END), 0) AS cur_avg,
@@ -568,8 +567,6 @@ ORDER BY impact_s DESC
 LIMIT 5
 """)
         for step, ca, pa, impact_s in regr_rows:
-            if step in actioned_steps:
-                continue
             ca_i = _int(ca)
             pa_i = _int(pa)
             impact_i = _int(impact_s)
@@ -584,7 +581,7 @@ LIMIT 5
                 fix="Investigate latency increase",
             ))
 
-        # Reliability failures (skip already-actioned steps)
+        # Reliability failures
         fail_rows = self._query(f"""
 SELECT step, COUNT(*) AS cnt
 FROM hook_metrics
@@ -595,8 +592,6 @@ ORDER BY cnt DESC
 LIMIT 5
 """)
         for step, count in fail_rows:
-            if step in actioned_steps:
-                continue
             cnt = _int(count)
             word = "failure" if cnt == 1 else "failures"
             items.append(ActionItem(
@@ -843,7 +838,9 @@ ORDER BY (cur_f - prev_f) DESC
         rows = self._query(f"""
 SELECT step,
   SUM(CASE WHEN ts > datetime('now','-7 days') AND exit_code != 0 THEN 1 ELSE 0 END) AS cur_f,
-  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND exit_code != 0 THEN 1 ELSE 0 END) AS prev_f
+  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND exit_code != 0 THEN 1 ELSE 0 END) AS prev_f,
+  SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END) AS cur_r,
+  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END) AS prev_r
 FROM hook_metrics
 WHERE ts > datetime('now','-14 days') AND step NOT IN ({sem})
 GROUP BY step
@@ -852,8 +849,8 @@ HAVING prev_f > 0 AND cur_f < prev_f AND CAST(prev_f - cur_f AS REAL)/prev_f > {
         SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END)) >= {config.MIN_RUNS_FOR_TREND}
 ORDER BY (prev_f - cur_f) DESC
 """)
-        return [FailureTrend(step=step, cur_f=_int(cf), prev_f=_int(pf), cur_r=0, prev_r=0)
-                for step, cf, pf in rows]
+        return [FailureTrend(step=step, cur_f=_int(cf), prev_f=_int(pf), cur_r=_int(cr), prev_r=_int(pr))
+                for step, cf, pf, cr, pr in rows]
 
     def latency_regressions_full(self) -> list[LatencyRegression]:
         rows = self._query(f"""

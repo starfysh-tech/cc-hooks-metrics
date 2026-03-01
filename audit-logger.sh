@@ -32,11 +32,14 @@ session=$(printf '%s' "$session" | tr -d '`$\n\r')
 
 # Full JSON payload — valuable for analysis; bounded to 64KB for shell safety
 full_payload=$(head -c 65536 "$TMPFILE")
+full_payload=$(printf '%s' "$full_payload" | tr -d '`$')
 
 sqlite3 "$HOOKS_DB" >/dev/null <<SQL || true
 PRAGMA busy_timeout=1000;
+BEGIN IMMEDIATE;
 INSERT INTO audit_events (ts, session, tool, input)
 VALUES ('$(_sql_escape "$ts")', '$(_sql_escape "$session")', '$(_sql_escape "$tool")', '$(_sql_escape "$full_payload")');
+COMMIT;
 SQL
 
 _maybe_prune_hooks_db

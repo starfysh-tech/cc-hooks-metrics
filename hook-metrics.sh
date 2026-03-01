@@ -41,14 +41,14 @@ sys=$(grep "^sys" "$time_file" | awk '{print $2}')
 duration_ms=$(awk "BEGIN{printf \"%.0f\", $real * 1000}")
 
 # Session ID — prefer env var set by Claude Code (v2.1.9+), fall back to stdin JSON
-SESSION_ID="${CLAUDE_SESSION_ID:-}"
+SESSION_ID=$(printf '%s' "${CLAUDE_SESSION_ID:-}" | tr -d '`$\n\r')
 if [ -z "$SESSION_ID" ]; then
   SESSION_ID=$(jq -r '.session_id // ""' "$input_file" 2>/dev/null | tr -d '`$\n\r' || echo "")
 fi
 
 # Git context — strip shell-injectable chars before heredoc interpolation
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null | tr -d '`$\n\r' || echo "")
-sha=$(git rev-parse --short HEAD 2>/dev/null || echo "")
+sha=$(git rev-parse --short HEAD 2>/dev/null | tr -d '`$\n\r' || echo "")
 repo=$(git rev-parse --show-toplevel 2>/dev/null | tr -d '`$\n\r' || echo "")
 host=$(hostname 2>/dev/null | tr -d '`$\n\r' || echo "")
 

@@ -37,6 +37,8 @@ def _ts_to_nanos(ts_str: str) -> int:
     """Convert SQLite TEXT timestamp to Unix nanoseconds. Returns 0 on corrupt input."""
     try:
         dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
     except (ValueError, AttributeError):
         try:
             dt = datetime.fromisoformat(ts_str).replace(tzinfo=timezone.utc)
@@ -53,9 +55,11 @@ def _redact_tool_input(input_json: str) -> str:
         return "{}"
     safe: dict = {}
     if "command" in inp:
-        safe["command"] = (inp["command"].split() or [""])[0] if inp["command"] else ""
+        cmd_val = inp["command"]
+        safe["command"] = (str(cmd_val).split() or [""])[0] if cmd_val else ""
     if "file_path" in inp:
-        safe["file_path"] = os.path.basename(inp["file_path"])
+        fp = inp["file_path"]
+        safe["file_path"] = os.path.basename(str(fp)) if fp else ""
     if "tool_name" in inp:
         safe["tool_name"] = inp["tool_name"]
     return json.dumps(safe)
@@ -76,7 +80,10 @@ def hook_metric_to_span(row: tuple, redact: bool = True) -> Span:
     branch, sha, host, repo, session = row[10:15]
 
     start_ns = _ts_to_nanos(ts)
-    end_ns = start_ns + int(duration_ms) * 1_000_000
+    if start_ns == 0:
+        raise ValueError(f"corrupt timestamp: {ts!r}")
+    dur = int(duration_ms or 0)
+    end_ns = start_ns + dur * 1_000_000
 
     status_code = 2 if exit_code != 0 else 1  # ERROR or OK
 
@@ -86,7 +93,7 @@ def hook_metric_to_span(row: tuple, redact: bool = True) -> Span:
         "hook.step": step,
         "hook.event": hook,
         "hook.exit_code": exit_code,
-        "hook.duration_ms": int(duration_ms),
+        "hook.duration_ms": dur,
         "vcs.branch": branch,
         "vcs.commit_sha": sha,
         "vcs.repository": repo_display if redact else repo,
@@ -131,7 +138,7 @@ def audit_event_to_span(row: tuple, redact: bool = True) -> Span:
         kind=3,
         start_time_unix_nano=start_ns,
         end_time_unix_nano=end_ns,
-        status_code=1,  # OK — failures captured in PostToolUseFailure events
+        status_code=2 if tool.startswith("PostToolUseFailure:") else 1,
         attributes=attrs,
     )
 

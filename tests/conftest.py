@@ -14,7 +14,7 @@ def test_db_path():
         CREATE TABLE hook_metrics (
             id INTEGER PRIMARY KEY,
             ts TEXT DEFAULT (datetime('now')),
-            event TEXT,
+            hook TEXT,
             step TEXT,
             duration_ms INTEGER,
             exit_code INTEGER,
@@ -45,11 +45,11 @@ def db(test_db_path):
 
 
 def seed_hook_metrics(db_path, rows):
-    """Insert rows into hook_metrics. Each row: (event, step, duration_ms, exit_code, repo, session)."""
+    """Insert rows into hook_metrics. Each row: (hook, step, duration_ms, exit_code, repo, session)."""
     conn = sqlite3.connect(db_path)
     for r in rows:
         conn.execute(
-            "INSERT INTO hook_metrics (event, step, duration_ms, exit_code, repo, session) VALUES (?,?,?,?,?,?)",
+            "INSERT INTO hook_metrics (hook, step, duration_ms, exit_code, repo, session) VALUES (?,?,?,?,?,?)",
             r,
         )
     conn.commit()

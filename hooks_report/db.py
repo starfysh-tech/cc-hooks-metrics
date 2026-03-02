@@ -194,6 +194,15 @@ class PeriodAggregate:
     end_ts: str
 
 
+@dataclass
+class GuardrailSummary:
+    step: str
+    total_runs: int
+    blocks: int
+    block_rate: Optional[float]
+    avg_ms: float
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -1234,6 +1243,33 @@ ORDER BY (cur_avg - prev_avg) DESC
 
     # ── export_data() ────────────────────────────────────────────────────────
 
+    def guardrail_summary(self, days: int = 7) -> list[GuardrailSummary]:
+        steps_list = ", ".join(f"'{s}'" for s in config.GUARDRAIL_STEPS)
+        rows = self._query(f"""
+SELECT step,
+  COUNT(*) AS total_runs,
+  SUM(CASE WHEN exit_code = 2 THEN 1 ELSE 0 END) AS blocks,
+  ROUND(100.0 * SUM(CASE WHEN exit_code = 2 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 1) AS block_rate,
+  ROUND(AVG(duration_ms), 1) AS avg_ms
+FROM hook_metrics
+WHERE step IN ({steps_list}) AND ts > datetime('now', '-{days} days')
+GROUP BY step ORDER BY total_runs DESC
+""")
+        return [
+            GuardrailSummary(step=step, total_runs=_int(tr), blocks=_int(bl),
+                             block_rate=_opt_float(br), avg_ms=float(am))
+            for step, tr, bl, br, am in rows
+        ]
+
+    def event_distribution(self, days: int = 7) -> list[tuple[str, int]]:
+        rows = self._query(f"""
+SELECT hook, COUNT(*) AS cnt
+FROM hook_metrics
+WHERE ts > datetime('now', '-{days} days')
+GROUP BY hook ORDER BY cnt DESC
+""")
+        return [(hook, _int(cnt)) for hook, cnt in rows]
+
     def export_data(self) -> dict:
         sem = _semantic_exit_placeholders()
         ts_now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -1377,6 +1413,20 @@ HAVING (cur_r = 0 AND prev_r >= 5) OR (prev_r = 0 AND cur_r >= 5)
             "failure_trends": failure_trends,
             "latency_trends": latency_trends,
             "coverage_gaps": coverage_gaps,
+            "guardrails": [
+                {
+                    "hook.step": g.step,
+                    "claude.hooks.runs": g.total_runs,
+                    "claude.hooks.blocks": g.blocks,
+                    "claude.hooks.block_rate": g.block_rate,
+                    "claude.hooks.duration.avg_ms": g.avg_ms,
+                }
+                for g in self.guardrail_summary()
+            ],
+            "event_distribution": [
+                {"hook.event": ev, "claude.hooks.runs": cnt}
+                for ev, cnt in self.event_distribution()
+            ],
         }
 
     # ── Span export ───────────────────────────────────────────────────────────

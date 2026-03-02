@@ -40,7 +40,8 @@ def main():
             if is_enabled():
                 from .otlp import send_spans
                 count = send_spans(spans)
-                print(f"otlp: exported {count} spans", file=sys.stderr)
+                if count > 0:
+                    print(f"otlp: exported {count} spans", file=sys.stderr)
             print(json.dumps(spans_to_dict(spans), indent=2))
         elif args.export:
             from .static import export_json

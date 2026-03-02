@@ -147,14 +147,18 @@ def build_otlp_payload(spans: list["Span"]) -> dict:
 def _parse_headers(header_str: str) -> dict:
     """Parse 'key=value,key2=value2' header string into a dict.
 
-    Handles spaces around delimiters. Skips malformed entries.
+    Handles spaces around delimiters. Warns to stderr on malformed entries.
     """
     headers: dict[str, str] = {}
     for part in header_str.split(","):
         part = part.strip()
+        if not part:
+            continue
         if "=" in part:
             k, _, v = part.partition("=")
             headers[k.strip()] = v.strip()
+        else:
+            print(f"warn: otlp: malformed header entry skipped: {part!r}", file=sys.stderr)
     return headers
 
 
@@ -171,31 +175,32 @@ def send_spans(spans: list["Span"]) -> int:
     if not endpoint:
         return 0
 
-    payload = build_otlp_payload(spans)
-    total = sum(len(ss["spans"]) for rs in payload["resourceSpans"] for ss in rs["scopeSpans"])
-    body = json.dumps(payload).encode()
     url = f"{endpoint}/v1/traces"
-
-    headers = {"Content-Type": "application/json"}
-    header_str = os.environ.get(config.OTLP_HEADERS_VAR, "")
-    if header_str:
-        headers.update(_parse_headers(header_str))
-
-    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
     try:
+        payload = build_otlp_payload(spans)
+        total = sum(len(ss["spans"]) for rs in payload["resourceSpans"] for ss in rs["scopeSpans"])
+        body = json.dumps(payload).encode()
+
+        headers = {"Content-Type": "application/json"}
+        header_str = os.environ.get(config.OTLP_HEADERS_VAR, "")
+        if header_str:
+            headers.update(_parse_headers(header_str))
+
+        req = urllib.request.Request(url, data=body, headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=config.OTLP_TIMEOUT_S) as resp:
             resp_body = resp.read().decode(errors="replace")
             try:
                 resp_json = json.loads(resp_body)
-                rejected = (resp_json.get("partialSuccess") or {}).get("rejectedSpans", 0)
-                if rejected:
+                raw = (resp_json.get("partialSuccess") or {}).get("rejectedSpans", 0)
+                rejected = int(raw)
+                if rejected > 0:
                     print(
                         f"warn: otlp: {rejected}/{total} spans rejected by backend",
                         file=sys.stderr,
                     )
-                    return total - int(rejected)
-            except (json.JSONDecodeError, AttributeError):
-                pass  # empty or non-JSON response is acceptable
+                    return max(0, total - rejected)
+            except (json.JSONDecodeError, AttributeError, ValueError, TypeError):
+                pass  # empty, non-JSON, or non-integer rejectedSpans — treat as full success
             return total
     except urllib.error.HTTPError as e:
         body_preview = e.read(200).decode(errors="replace")
@@ -203,4 +208,7 @@ def send_spans(spans: list["Span"]) -> int:
         return 0
     except (urllib.error.URLError, OSError, TimeoutError) as e:
         print(f"warn: otlp: network error sending to {url}: {e}", file=sys.stderr)
+        return 0
+    except Exception as e:
+        print(f"warn: otlp: unexpected error: {e}", file=sys.stderr)
         return 0

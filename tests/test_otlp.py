@@ -8,6 +8,7 @@ from hooks_report.otlp import (
     _parse_headers,
     _typed_value,
     build_otlp_payload,
+    is_enabled,
     root_span_id_from_session,
     send_spans,
 )
@@ -230,3 +231,108 @@ def test_send_spans_network_error_returns_zero(capsys):
         count = send_spans(spans)
     assert count == 0
     assert "warn: otlp:" in capsys.readouterr().err
+
+
+def test_send_spans_malformed_rejected_count_returns_total(capsys):
+    """Non-integer rejectedSpans is ignored; full total returned."""
+    spans = [_make_span("sess-1", "1111111111111111")]
+    mock_resp = _mock_response({"partialSuccess": {"rejectedSpans": "five"}})
+    env = {"HOOKS_METRICS_OTLP_ENDPOINT": ENDPOINT}
+    with patch.dict("os.environ", env), patch("urllib.request.urlopen", return_value=mock_resp):
+        count = send_spans(spans)
+    assert count == 2  # 1 input + 1 root; malformed rejection → treat as full success
+
+
+def test_send_spans_excess_rejection_clamped_to_zero():
+    """rejectedSpans > total is clamped to zero, not negative."""
+    spans = [_make_span("sess-1", "1111111111111111")]
+    # total = 2 (1 input + 1 root), backend claims 10 rejected
+    mock_resp = _mock_response({"partialSuccess": {"rejectedSpans": 10}})
+    env = {"HOOKS_METRICS_OTLP_ENDPOINT": ENDPOINT}
+    with patch.dict("os.environ", env), patch("urllib.request.urlopen", return_value=mock_resp):
+        count = send_spans(spans)
+    assert count == 0
+
+
+def test_send_spans_never_raises_on_payload_error(capsys):
+    """send_spans never raises even if span data causes an internal error."""
+    bad_span = Span(
+        trace_id="a" * 32, span_id="b" * 16, name="hook.bad",
+        kind=3, start_time_unix_nano=1_000_000_000, end_time_unix_nano=2_000_000_000,
+        status_code=1, attributes=None, session_id="sess-1",
+    )
+    env = {"HOOKS_METRICS_OTLP_ENDPOINT": ENDPOINT}
+    with patch.dict("os.environ", env):
+        count = send_spans([bad_span])
+    assert count == 0
+    assert "warn: otlp:" in capsys.readouterr().err
+
+
+# ── is_enabled ────────────────────────────────────────────────────────────────
+
+def test_is_enabled_with_endpoint():
+    with patch.dict("os.environ", {"HOOKS_METRICS_OTLP_ENDPOINT": ENDPOINT}, clear=True):
+        assert is_enabled() is True
+
+
+def test_is_enabled_without_endpoint():
+    with patch.dict("os.environ", {}, clear=True):
+        assert is_enabled() is False
+
+
+# ── root span behavioral tests ────────────────────────────────────────────────
+
+def test_build_otlp_payload_root_span_error_when_any_child_errors():
+    """Root span is ERROR when any child has status_code 2."""
+    trace_id = hashlib.sha256(b"sess-err").hexdigest()[:32]
+    ok_span = Span(
+        trace_id=trace_id, span_id="a" * 16, name="hook.ok",
+        kind=3, start_time_unix_nano=1_000_000_000, end_time_unix_nano=2_000_000_000,
+        status_code=1, attributes={}, session_id="sess-err",
+    )
+    err_span = Span(
+        trace_id=trace_id, span_id="b" * 16, name="hook.fail",
+        kind=3, start_time_unix_nano=1_000_000_000, end_time_unix_nano=2_000_000_000,
+        status_code=2, attributes={}, session_id="sess-err",
+    )
+    payload = build_otlp_payload([ok_span, err_span])
+    otlp_spans = payload["resourceSpans"][0]["scopeSpans"][0]["spans"]
+    root = next(s for s in otlp_spans if s["name"] == "session")
+    assert root["status"]["code"] == 2
+
+
+def test_build_otlp_payload_root_span_ok_when_all_children_ok():
+    """Root span is OK when all children are OK."""
+    trace_id = hashlib.sha256(b"sess-ok").hexdigest()[:32]
+    spans = [
+        Span(trace_id=trace_id, span_id="a" * 16, name="hook.a",
+             kind=3, start_time_unix_nano=1_000_000_000, end_time_unix_nano=2_000_000_000,
+             status_code=1, attributes={}, session_id="sess-ok"),
+        Span(trace_id=trace_id, span_id="b" * 16, name="hook.b",
+             kind=3, start_time_unix_nano=2_000_000_000, end_time_unix_nano=3_000_000_000,
+             status_code=1, attributes={}, session_id="sess-ok"),
+    ]
+    payload = build_otlp_payload(spans)
+    otlp_spans = payload["resourceSpans"][0]["scopeSpans"][0]["spans"]
+    root = next(s for s in otlp_spans if s["name"] == "session")
+    assert root["status"]["code"] == 1
+
+
+def test_build_otlp_payload_root_span_timing_envelope():
+    """Root span covers min(start) to max(end) of children."""
+    trace_id = hashlib.sha256(b"sess-time").hexdigest()[:32]
+    early = Span(
+        trace_id=trace_id, span_id="a" * 16, name="hook.early",
+        kind=3, start_time_unix_nano=1_000_000_000, end_time_unix_nano=2_000_000_000,
+        status_code=1, attributes={}, session_id="sess-time",
+    )
+    late = Span(
+        trace_id=trace_id, span_id="b" * 16, name="hook.late",
+        kind=3, start_time_unix_nano=3_000_000_000, end_time_unix_nano=5_000_000_000,
+        status_code=1, attributes={}, session_id="sess-time",
+    )
+    payload = build_otlp_payload([early, late])
+    otlp_spans = payload["resourceSpans"][0]["scopeSpans"][0]["spans"]
+    root = next(s for s in otlp_spans if s["name"] == "session")
+    assert root["startTimeUnixNano"] == "1000000000"
+    assert root["endTimeUnixNano"] == "5000000000"

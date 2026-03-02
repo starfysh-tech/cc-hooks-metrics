@@ -132,3 +132,28 @@ All data accessible interactively without flags.
 1. Create the hook script following the `mermaid-lint.sh` pattern (read JSON from stdin, exit 0 on no-op)
 2. Wire it in `~/.claude/settings.json` using `hook-metrics.sh EVENT:STEP_NAME /path/to/script`
 3. Add its timeout to `config.STEP_TIMEOUTS` in `hooks_report/config.py` if it has a configured timeout
+
+## Guardrails
+
+Optional guardrail scripts live in `guardrails/`. All use plain `python3` (stdlib only) for portability.
+
+| Script | Event | Purpose |
+|--------|-------|---------|
+| `guard-security.py` | PreToolUse | Blocks destructive Bash + `.env` access |
+| `guard-python-lint.py` | PostToolUse | Runs `ruff check` on `.py` Write/Edit |
+| `guard-python-typecheck.py` | PostToolUse | Runs `ty check` on `.py` Write/Edit |
+| `guard-auto-allow.py` | PermissionRequest | Auto-allows read-only tools |
+
+All guardrails exit 2 + stderr to block (Claude self-corrects), exit 0 to allow. Wired via `hook-metrics.sh` for tracking. See `settings-guardrails-example.json` for copy-paste wiring.
+
+`GUARDRAIL_STEPS` in `config.py` controls reporting queries. `event-log` step is already in `SKIP_HOOKS_PATTERN`.
+
+### Hook Protocol
+
+- **PreToolUse**: stdin `{tool_name, tool_input}`. Exit 2 + stderr = block.
+- **PostToolUse**: stdin `{tool_name, tool_input, tool_use_id}`. Exit 2 + stderr = block.
+- **PermissionRequest**: stdout JSON `{hookSpecificOutput: {hookEventName, decision: {behavior: "allow"}}}`. No output = defer to user.
+
+### Naming convention
+
+Guardrail steps use `guard-` prefix (e.g., `guard-security`, `guard-python-lint`).

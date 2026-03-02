@@ -191,3 +191,36 @@ def action_items_panel(
     for _, group_lines in groups:
         items.extend(group_lines)
     return items
+
+
+def pain_index_cell(index: float) -> Text:
+    """Color-coded pain index: red bold >= PAIN_INDEX_RED, yellow >= PAIN_INDEX_YELLOW, else green."""
+    label = f"{index:.1f}"
+    if index >= config.PAIN_INDEX_RED:
+        return Text(label, style="red bold")
+    elif index >= config.PAIN_INDEX_YELLOW:
+        return Text(label, style="yellow")
+    return Text(label, style="green")
+
+
+def fail_rate_cell(rate: Optional[float]) -> Text:
+    """Color-coded fail rate: dim '—' for None, red for > 0, green for 0."""
+    if rate is None:
+        return Text("—", style="dim")
+    if rate > 0:
+        return Text(f"{rate:.1f}%", style="red")
+    return Text("0%", style="green")
+
+
+def failures_cell(n: int) -> Text:
+    """Red if n > 0, plain otherwise."""
+    return Text(str(n), style="red") if n > 0 else Text(str(n))
+
+
+def fmt_session_dur(seconds: int) -> str:
+    """Format session duration as h/m/s string."""
+    if seconds >= 3600:
+        return f"{seconds // 3600}h{(seconds % 3600) // 60}m"
+    if seconds >= 60:
+        return f"{seconds // 60}m{seconds % 60}s"
+    return f"{seconds}s"

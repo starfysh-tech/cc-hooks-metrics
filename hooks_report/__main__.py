@@ -40,6 +40,12 @@ def main():
         elif args.export:
             from .static import export_json
             export_json(db)
+        elif args.step:
+            from .static import render_step_drilldown
+            render_step_drilldown(db, args.step)
+        elif args.sessions:
+            from .static import render_sessions
+            render_sessions(db)
         elif args.static or not sys.stdout.isatty():
             from .static import render_static
             render_static(db, verbose=args.verbose)

@@ -4,13 +4,14 @@ from datetime import datetime
 from rich.table import Table
 from rich.text import Text
 from textual.app import App, ComposeResult
+from textual.await_complete import AwaitComplete
 from textual.binding import Binding
 from textual.containers import ScrollableContainer
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 
 from . import config, render
-from .db import HooksDB, HooksDBError
+from .db import HooksDB, HooksDBError, StepReliability, RepoProfile, SessionSummary
 
 
 def _perf_rich_table(db: HooksDB) -> Table:
@@ -96,6 +97,68 @@ def _projects_rich_table(db: HooksDB) -> Table:
     return table
 
 
+def _session_table(sessions: list[SessionSummary]) -> Table:
+    """Build a Rich Table for session list."""
+    table = Table(box=None, padding=(0, 1), show_header=True, header_style="bold")
+    table.add_column("Session", width=14)
+    table.add_column("Duration", width=10, justify="right")
+    table.add_column("Hooks", width=6, justify="right")
+    table.add_column("Fails", width=6, justify="right")
+    table.add_column("Tools", width=6, justify="right")
+    table.add_column("Overhead", width=10, justify="right")
+    table.add_column("Steps", width=6, justify="right")
+
+    for s in sessions:
+        table.add_row(
+            s.session_id[:12], render.fmt_session_dur(s.duration_s), str(s.hook_runs),
+            render.failures_cell(s.hook_failures),
+            str(s.tool_uses), render.fmt_dur(s.overhead_ms), str(s.distinct_steps),
+        )
+    return table
+
+
+def _step_reliability_table(steps: list[StepReliability]) -> Table:
+    """Build a Rich Table for step reliability, sorted by pain_index desc."""
+    table = Table(box=None, padding=(0, 1), show_header=True, header_style="bold")
+    table.add_column("Step", width=24)
+    table.add_column("Runs", width=6, justify="right")
+    table.add_column("Fail%", width=7, justify="right")
+    table.add_column("p50", width=7, justify="right")
+    table.add_column("p90", width=7, justify="right")
+    table.add_column("p99", width=7, justify="right")
+    table.add_column("Pain", width=7, justify="right")
+
+    for s in sorted(steps, key=lambda x: x.pain_index, reverse=True):
+        table.add_row(
+            s.step, str(s.total_runs), render.fail_rate_cell(s.fail_rate),
+            render.fmt_dur(s.p50_ms), render.fmt_dur(s.p90_ms), render.fmt_dur(s.p99_ms),
+            render.pain_index_cell(s.pain_index),
+        )
+    return table
+
+
+def _repo_profile_table(repos: list[RepoProfile], under_set: set[str]) -> Table:
+    """Build a Rich Table for repo profiles; marks under-instrumented repos."""
+    table = Table(box=None, padding=(0, 1), show_header=True, header_style="bold")
+    table.add_column("Repo", width=32)
+    table.add_column("Runs", width=6, justify="right")
+    table.add_column("Fail%", width=7, justify="right")
+    table.add_column("Steps", width=6, justify="right")
+    table.add_column("Overhead", width=10, justify="right")
+    table.add_column("Sessions", width=9, justify="right")
+    table.add_column("Guard", width=7, justify="right")
+
+    for r in repos:
+        repo_cell = Text(f"{r.repo} ⚠", style="yellow") if r.repo in under_set else Text(r.repo)
+        session_cell = Text("—", style="dim") if r.session_count == 0 else Text(str(r.session_count))
+        guard_cell = Text("—", style="dim") if r.guardrail_density == 0 else Text(f"{r.guardrail_density:.2f}")
+        table.add_row(
+            repo_cell, str(r.total_runs), render.fail_rate_cell(r.fail_rate), str(r.distinct_steps),
+            render.fmt_dur(r.overhead_ms), session_cell, guard_cell,
+        )
+    return table
+
+
 class DetailScreen(Screen):
     """Detail view: WoW trends + latency regressions + projects."""
 
@@ -171,6 +234,89 @@ class DetailScreen(Screen):
         self.query_one("#projects-table", Static).update(_projects_rich_table(db))
 
 
+class SessionsScreen(Screen):
+    """Sessions view: per-session analysis (last 7d)."""
+
+    BINDINGS = [
+        Binding("escape", "app.pop_screen", "Back"),
+        Binding("q", "app.quit", "Quit"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with ScrollableContainer():
+            yield Static(id="sessions-header")
+            yield Static(id="sessions-table")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        db: HooksDB = self.app.db  # type: ignore[attr-defined]
+        self.app.sub_title = "Sessions"
+        try:
+            if not db._has_session_column():
+                self.query_one("#sessions-header", Static).update(
+                    Text("\n  Sessions — session column not found (hook data predates session tracking)", style="dim")
+                )
+                return
+            sessions = db.session_list(days=7, limit=15)
+            self.query_one("#sessions-header", Static).update(
+                Text(f"\n  Sessions (last 7d — {len(sessions)} sessions)", style="bold")
+            )
+            if not sessions:
+                self.query_one("#sessions-table", Static).update(
+                    Text("  No session data found in last 7 days.", style="dim")
+                )
+            else:
+                self.query_one("#sessions-table", Static).update(_session_table(sessions))
+        except HooksDBError as e:
+            self.query_one("#sessions-header", Static).update(
+                Text(f"\n  Sessions — DB error: {e}", style="red")
+            )
+
+
+class StepDrillScreen(Screen):
+    """Step drill-down: reliability per step + repo profiles."""
+
+    BINDINGS = [
+        Binding("escape", "app.pop_screen", "Back"),
+        Binding("q", "app.quit", "Quit"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with ScrollableContainer():
+            yield Static(id="step-header")
+            yield Static(id="step-table")
+            yield Static(id="repo-header")
+            yield Static(id="repo-table")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        db: HooksDB = self.app.db  # type: ignore[attr-defined]
+        self.app.sub_title = "Steps"
+        try:
+            steps = db.step_reliability(days=7)
+            self.query_one("#step-header", Static).update(
+                Text(f"\n  Step Reliability (last 7d — {len(steps)} steps)", style="bold")
+            )
+            self.query_one("#step-table", Static).update(_step_reliability_table(steps))
+        except HooksDBError as e:
+            self.query_one("#step-header", Static).update(
+                Text(f"\n  Step Reliability — DB error: {e}", style="red")
+            )
+        try:
+            repos = db.repo_profiles(days=7)
+            under_set = {r.repo for r in repos if r.distinct_steps < config.MIN_STEPS_FOR_COVERAGE and r.total_runs >= config.MIN_RUNS_FOR_TREND}
+            self.query_one("#repo-header", Static).update(
+                Text(f"\n  Repo Profiles (last 7d — {len(repos)} repos)", style="bold")
+            )
+            self.query_one("#repo-table", Static).update(_repo_profile_table(repos, under_set))
+        except HooksDBError as e:
+            self.query_one("#repo-header", Static).update(
+                Text(f"\n  Repo Profiles — DB error: {e}", style="red")
+            )
+
+
 class HooksReportApp(App):
     """Textual TUI for hooks report — dashboard rendered directly on App."""
 
@@ -183,7 +329,9 @@ class HooksReportApp(App):
     TITLE = "Hooks Report"
 
     BINDINGS = [
-        Binding("d", "push_screen('detail')", "Detail"),
+        Binding("d", "show_detail", "Detail"),
+        Binding("s", "show_sessions", "Sessions"),
+        Binding("t", "show_steps", "Steps"),
         Binding("r", "refresh_data", "Refresh"),
         Binding("e", "export", "Export"),
         Binding("q", "quit", "Quit"),
@@ -203,13 +351,15 @@ class HooksReportApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.install_screen(DetailScreen(), "detail")
         self._populate_dashboard()
+
+    def _dashboard_subtitle(self, summary) -> str:
+        overhead_min = round(summary.overhead_24h_ms / 60000, 1)
+        return f"24h: {summary.rel_total} runs · {overhead_min}m overhead · {datetime.now():%H:%M}"
 
     def _populate_dashboard(self) -> None:
         summary = self.db.assess()
-        overhead_min = round(summary.overhead_24h_ms / 60000, 1)
-        self.sub_title = f"24h: {summary.rel_total} runs · {overhead_min}m overhead · {datetime.now():%H:%M}"
+        self.sub_title = self._dashboard_subtitle(summary)
 
         self.query_one("#traffic-lights", Static).update(render.traffic_light_grid(summary))
 
@@ -226,6 +376,27 @@ class HooksReportApp(App):
             Text(f"\n  Performance (last 7d — {summary.runs_7d} runs, {overhead_7d_min} min overhead)", style="bold")
         )
         self.query_one("#perf-table", Static).update(_perf_rich_table(self.db))
+
+    def action_show_detail(self) -> None:
+        self.push_screen(DetailScreen())
+
+    def action_show_sessions(self) -> None:
+        self.push_screen(SessionsScreen())
+
+    def action_show_steps(self) -> None:
+        self.push_screen(StepDrillScreen())
+
+    def pop_screen(self) -> AwaitComplete:
+        """Restore dashboard subtitle when returning from any pushed screen."""
+        result = super().pop_screen()
+        self._restore_subtitle()
+        return result
+
+    def _restore_subtitle(self) -> None:
+        try:
+            self.sub_title = self._dashboard_subtitle(self.db.assess())
+        except Exception:
+            self.sub_title = "Dashboard"
 
     def action_refresh_data(self) -> None:
         self._populate_dashboard()

@@ -39,4 +39,14 @@ def parse_args():
         default=None,
         help=f"Override DB path (default: {config.DEFAULT_DB_PATH}, env: CLAUDE_HOOKS_DB)",
     )
+    parser.add_argument(
+        "--sessions",
+        action="store_true",
+        help="Show per-session analysis (requires session column)",
+    )
+    parser.add_argument(
+        "--step",
+        metavar="NAME",
+        help="Drill down into a specific step",
+    )
     return parser.parse_args()

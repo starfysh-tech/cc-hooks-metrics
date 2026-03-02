@@ -72,3 +72,41 @@ def test_guardrail_tuning_empty_db(db):
     """Empty DB returns empty suggestions, no crash."""
     from hooks_report.advisor import guardrail_tuning
     assert guardrail_tuning(db, days=7) == []
+
+
+def test_periodic_summary_structure(test_db_path, db):
+    """periodic_summary returns a PeriodSummary with expected fields."""
+    seed_hook_metrics(test_db_path, [
+        ("PreToolUse", "lint", 500, 0, "repo1", "s1"),
+        ("PreToolUse", "lint", 300, 1, "repo1", "s2"),
+        ("PreToolUse", "test", 200, 0, "repo2", "s3"),
+    ])
+
+    from hooks_report.advisor import periodic_summary
+    summary = periodic_summary(db, period="weekly")
+    assert summary.period == "weekly"
+    assert summary.schema == "claude.hooks.summary/v1"
+    assert summary.metrics.total_runs == 3
+    assert summary.metrics.failures == 1
+
+
+def test_periodic_summary_empty_db(db):
+    """Empty DB produces a summary with zero metrics."""
+    from hooks_report.advisor import periodic_summary
+    summary = periodic_summary(db, period="daily")
+    assert summary.metrics.total_runs == 0
+
+
+def test_summary_to_json_schema(test_db_path, db):
+    """summary_to_json output has required top-level keys."""
+    seed_hook_metrics(test_db_path, [
+        ("PreToolUse", "lint", 500, 0, "repo1", "s1"),
+    ])
+
+    from hooks_report.advisor import periodic_summary, summary_to_json
+    summary = periodic_summary(db, period="weekly")
+    data = summary_to_json(summary)
+    assert data["schema"] == "claude.hooks.summary/v1"
+    assert "metrics" in data
+    assert "suggestions" in data
+    assert "worst_step" in data

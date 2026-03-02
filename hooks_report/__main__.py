@@ -46,6 +46,10 @@ def main():
         elif args.sessions:
             from .static import render_sessions
             render_sessions(db)
+        elif args.summary:
+            from .advisor import periodic_summary, summary_to_json
+            summary_data = periodic_summary(db, period=args.summary)
+            print(json.dumps(summary_to_json(summary_data), indent=2))
         elif args.static or not sys.stdout.isatty():
             from .static import render_static
             render_static(db, verbose=args.verbose)

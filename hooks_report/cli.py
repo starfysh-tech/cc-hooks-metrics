@@ -49,4 +49,10 @@ def parse_args():
         metavar="NAME",
         help="Drill down into a specific step",
     )
+    parser.add_argument(
+        "--summary",
+        choices=["daily", "weekly"],
+        default=None,
+        help="Generate periodic summary as JSON",
+    )
     return parser.parse_args()

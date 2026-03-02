@@ -36,6 +36,11 @@ def main():
             if skip_count:
                 print(f"warn: {skip_count} row(s) skipped due to conversion errors", file=sys.stderr)
             spans.sort(key=lambda s: s.start_time_unix_nano)
+            from .otlp import is_enabled
+            if is_enabled():
+                from .otlp import send_spans
+                count = send_spans(spans)
+                print(f"otlp: exported {count}/{len(spans)} spans", file=sys.stderr)
             print(json.dumps(spans_to_dict(spans), indent=2))
         elif args.export:
             from .static import export_json

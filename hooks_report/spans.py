@@ -20,6 +20,7 @@ class Span:
     end_time_unix_nano: int
     status_code: int        # 1=OK, 2=ERROR (OTel spec also defines 0=UNSET, unused here)
     attributes: dict
+    session_id: str = ""    # source session; used by OTLP export for root span grouping
 
 
 def trace_id_from_session(session_id: str) -> str:
@@ -115,6 +116,7 @@ def hook_metric_to_span(row: tuple, redact: bool = True) -> Span:
         end_time_unix_nano=end_ns,
         status_code=status_code,
         attributes=attrs,
+        session_id=session or "",
     )
 
 
@@ -146,6 +148,7 @@ def audit_event_to_span(row: tuple, redact: bool = True) -> Span:
         end_time_unix_nano=end_ns,
         status_code=2 if tool.startswith("PostToolUseFailure:") else 1,
         attributes=attrs,
+        session_id=session or "",
     )
 
 
@@ -153,7 +156,7 @@ def spans_to_dict(spans: list[Span]) -> dict:
     """Serialize spans to claude.hooks.spans/v1 JSON.
 
     Flat structure designed for human readability and LLM analysis.
-    Not OTLP wire format — defer camelCase + typed attribute wrappers to Phase 5.
+    Not OTLP wire format — see otlp.py for camelCase + typed attribute wrappers.
     """
     return {
         "schema": "claude.hooks.spans/v1",

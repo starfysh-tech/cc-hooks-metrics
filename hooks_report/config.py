@@ -32,3 +32,14 @@ DEFAULT_DB_PATH = os.path.expanduser("~/.claude/hooks.db")
 SESSION_LIMIT_COMPACT = 5      # --verbose section: worst 5 by overhead
 SESSION_LIMIT_TUI = 15         # TUI SessionsScreen
 SESSION_LIMIT_STANDALONE = 20  # --sessions standalone renderer
+
+# Advisor tuning thresholds
+TUNING_HIGH_FAIL_RATE = 30.0       # % — "async" suggestion
+TUNING_HIGH_FAIL_AVG_MS = 2000     # ms — combined with high fail rate
+TUNING_NOISY_FAIL_RATE = 20.0      # % — "investigate" suggestion
+TUNING_NOISY_MAX_AVG_MS = 500      # ms — cheap but noisy
+TUNING_SLOW_MAX_FAIL_RATE = 5.0    # % — "optimize" suggestion
+TUNING_SLOW_MIN_AVG_MS = 5000      # ms — low fail but slow
+TUNING_MISSING_TIMEOUT_P99_MS = 10000  # ms — no timeout + p99 > this
+HOT_SEQUENCE_FAIL_RATE = 20.0      # % — sequence failure threshold
+SUMMARY_PERIODS = {"daily": 1, "weekly": 7}

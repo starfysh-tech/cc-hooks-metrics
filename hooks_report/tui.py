@@ -229,6 +229,8 @@ class StepDrillScreen(Screen):
             yield Static(id="step-table")
             yield Static(id="repo-header")
             yield Static(id="repo-table")
+            yield Static(id="guardrail-header")
+            yield Static(id="guardrail-table")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -254,6 +256,19 @@ class StepDrillScreen(Screen):
         except HooksDBError as e:
             self.query_one("#repo-header", Static).update(
                 Text(f"\n  Repo Profiles — DB error: {e}", style="red")
+            )
+        try:
+            guardrails = db.guardrail_summary()
+            if guardrails:
+                self.query_one("#guardrail-header", Static).update(
+                    Text(f"\n  Guardrails (last 7d — {len(guardrails)} active)", style="bold")
+                )
+                self.query_one("#guardrail-table", Static).update(
+                    render.build_guardrail_table(guardrails)
+                )
+        except HooksDBError as e:
+            self.query_one("#guardrail-header", Static).update(
+                Text(f"\n  Guardrails — DB error: {e}", style="red")
             )
 
 

@@ -173,6 +173,27 @@ class SessionTimeline:
     detail: str
 
 
+@dataclass
+class HotSequence:
+    prev_step: str
+    step: str
+    total: int
+    failures: int
+    fail_rate: float
+
+
+@dataclass
+class PeriodAggregate:
+    total_runs: int
+    failures: int
+    fail_rate: float
+    overhead_ms: int
+    unique_steps: int
+    unique_repos: int
+    start_ts: str
+    end_ts: str
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -910,6 +931,68 @@ ORDER BY ts
             )
             for ts, source, name, duration_ms, exit_code, detail in rows
         ]
+
+    # ── Advisor methods ───────────────────────────────────────────────────────
+
+    def hot_sequences(self, days: int = 7) -> list[HotSequence]:
+        """Find step pairs that frequently fail together within sessions."""
+        if not self._has_session_column():
+            return []
+        sem = _semantic_exit_placeholders()
+        day_str = f"-{days} days"
+        rows = self._query(f"""
+WITH ordered AS (
+    SELECT session, step, exit_code,
+           LAG(step) OVER (PARTITION BY session ORDER BY ts) AS prev_step
+    FROM hook_metrics
+    WHERE ts > datetime('now', ?) AND step NOT IN ({sem})
+      AND session != ''
+)
+SELECT prev_step, step,
+       COUNT(*) AS total,
+       SUM(CASE WHEN exit_code != 0 THEN 1 ELSE 0 END) AS failures,
+       ROUND(100.0 * SUM(CASE WHEN exit_code != 0 THEN 1 ELSE 0 END) / COUNT(*), 1) AS fail_rate
+FROM ordered
+WHERE prev_step IS NOT NULL
+GROUP BY prev_step, step
+HAVING COUNT(*) >= ? AND fail_rate >= ?
+ORDER BY failures DESC
+LIMIT 10
+""", (day_str, config.MIN_RUNS_FOR_TREND, config.HOT_SEQUENCE_FAIL_RATE))
+        return [HotSequence(
+            prev_step=r[0], step=r[1], total=_int(r[2]),
+            failures=_int(r[3]), fail_rate=float(r[4]),
+        ) for r in rows]
+
+    def period_aggregate(self, days: int = 7) -> PeriodAggregate:
+        """Aggregate hook metrics over a time window."""
+        sem = _semantic_exit_placeholders()
+        day_str = f"-{days} days"
+        row = self._query_one(f"""
+SELECT
+    COUNT(*) AS total_runs,
+    SUM(CASE WHEN exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END) AS failures,
+    ROUND(100.0 * SUM(CASE WHEN exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 1) AS fail_rate,
+    COALESCE(SUM(duration_ms), 0) AS overhead_ms,
+    COUNT(DISTINCT step) AS unique_steps,
+    COUNT(DISTINCT repo) AS unique_repos,
+    MIN(ts) AS start_ts,
+    MAX(ts) AS end_ts
+FROM hook_metrics
+WHERE ts > datetime('now', ?)
+""", (day_str,))
+        if row is None or row[0] == 0:
+            return PeriodAggregate(0, 0, 0.0, 0, 0, 0, "", "")
+        return PeriodAggregate(
+            total_runs=_int(row[0]),
+            failures=_int(row[1]),
+            fail_rate=float(row[2]) if row[2] is not None else 0.0,
+            overhead_ms=_int(row[3]),
+            unique_steps=_int(row[4]),
+            unique_repos=_int(row[5]),
+            start_ts=row[6] or "",
+            end_ts=row[7] or "",
+        )
 
     # ── Verbose failure section helpers ───────────────────────────────────────
 

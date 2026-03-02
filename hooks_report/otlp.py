@@ -171,8 +171,8 @@ def send_spans(spans: list["Span"]) -> int:
     if not endpoint:
         return 0
 
-    total = len(spans)
     payload = build_otlp_payload(spans)
+    total = sum(len(ss["spans"]) for rs in payload["resourceSpans"] for ss in rs["scopeSpans"])
     body = json.dumps(payload).encode()
     url = f"{endpoint}/v1/traces"
 

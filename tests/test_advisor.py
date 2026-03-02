@@ -68,6 +68,26 @@ def test_guardrail_tuning_zero_fail_rate_not_misclassified(test_db_path, db):
     assert "good-step" not in step_names
 
 
+def test_guardrail_tuning_add_timeout_suggestion(test_db_path, db):
+    """No configured timeout + high p99 → 'add-timeout' suggestion.
+
+    4 fast runs + 1 very slow run: avg_ms ~2280 (skips 'optimize'), p99=11000 >= 10000.
+    Step 'no-timeout-step' is not in STEP_TIMEOUTS so has_timeout=False.
+    """
+    seed_hook_metrics(test_db_path, [
+        ("PreToolUse", "no-timeout-step", 100, 0, "repo1", "s1"),
+        ("PreToolUse", "no-timeout-step", 100, 0, "repo1", "s2"),
+        ("PreToolUse", "no-timeout-step", 100, 0, "repo1", "s3"),
+        ("PreToolUse", "no-timeout-step", 100, 0, "repo1", "s4"),
+        ("PreToolUse", "no-timeout-step", 11000, 0, "repo1", "s5"),
+    ])
+
+    from hooks_report.advisor import guardrail_tuning
+    suggestions = guardrail_tuning(db, days=7)
+    s = next(s for s in suggestions if s.step == "no-timeout-step")
+    assert s.category == "add-timeout"
+
+
 def test_guardrail_tuning_empty_db(db):
     """Empty DB returns empty suggestions, no crash."""
     from hooks_report.advisor import guardrail_tuning

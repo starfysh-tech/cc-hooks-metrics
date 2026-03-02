@@ -43,3 +43,11 @@ TUNING_SLOW_MIN_AVG_MS = 5000      # ms — low fail but slow
 TUNING_MISSING_TIMEOUT_P99_MS = 10000  # ms — no timeout + p99 > this
 HOT_SEQUENCE_FAIL_RATE = 20.0      # % — sequence failure threshold
 SUMMARY_PERIODS = {"daily": 1, "weekly": 7}
+
+# OTLP export (Phase 5)
+OTLP_ENDPOINT_VAR = "HOOKS_METRICS_OTLP_ENDPOINT"
+OTLP_HEADERS_VAR = "HOOKS_METRICS_OTLP_HEADERS"
+OTLP_TIMEOUT_S = 10
+OTLP_SERVICE_NAME = "claude-hooks"
+OTLP_SERVICE_VERSION = "0.1.0"
+OTLP_SCOPE_NAME = "hooks_report"

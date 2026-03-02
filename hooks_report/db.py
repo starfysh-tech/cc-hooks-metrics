@@ -943,7 +943,7 @@ ORDER BY ts
         rows = self._query(f"""
 WITH ordered AS (
     SELECT session, step, exit_code,
-           LAG(step) OVER (PARTITION BY session ORDER BY ts) AS prev_step
+           LAG(step) OVER (PARTITION BY session ORDER BY ts, id) AS prev_step
     FROM hook_metrics
     WHERE ts > datetime('now', ?) AND step NOT IN ({sem})
       AND session != ''

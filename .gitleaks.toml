@@ -23,6 +23,10 @@ paths = [
   '''go\.sum$'''
 ]
 
+commits = [
+  "5af18f6ae49d637d277989432b3b2c919acb3177"  # test_parse_headers_basic: "Authorization=Bearer token123" is a synthetic test value
+]
+
 regexes = [
   '''example\.com''',
   '''localhost''',

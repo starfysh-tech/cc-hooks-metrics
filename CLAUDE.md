@@ -77,8 +77,9 @@ hooks_report/
   __init__.py       # empty
   __main__.py       # entry: export/static/tui dispatch, lazy Textual import
   cli.py            # argparse: --export, --export-spans, --verbose, --static, --db, --include-sensitive
-  config.py         # STEP_TIMEOUTS, SEMANTIC_EXIT_STEPS, thresholds, SKIP_HOOKS_PATTERN
+  config.py         # STEP_TIMEOUTS, SEMANTIC_EXIT_STEPS, thresholds, SKIP_HOOKS_PATTERN, OTLP constants
   db.py             # HooksDB: typed dataclasses + SQLite queries
+  otlp.py           # OTLP/HTTP JSON export: build_otlp_payload(), send_spans(); zero external deps
   render.py         # Rich helpers: fmt_dur, bar_chart, trend_badge, pct_change, traffic_light_grid
   spans.py          # OTel span model: Span dataclass, hook_metric_to_span, audit_event_to_span, spans_to_dict
   static.py         # Rich Console output: compact sections + verbose sections + export_json
@@ -112,7 +113,7 @@ All data accessible interactively without flags.
 
 **--export mode** — OTel-aligned JSON, schema `claude.hooks.trends/v1`, metric names `claude.hooks.*`, attributes `hook.step` / `vcs.repository`.
 
-**--export-spans mode** — OTel span JSON, schema `claude.hooks.spans/v1`. One span per hook_metrics row (`hook.{step}`, kind=3 CLIENT) and per audit_events row (`tool.{tool_name}`, kind=1 INTERNAL). Redacts sensitive fields by default; `--include-sensitive` disables redaction. Skip warnings on corrupt rows go to stderr.
+**--export-spans mode** — OTel span JSON, schema `claude.hooks.spans/v1`. One span per hook_metrics row (`hook.{step}`, kind=3 CLIENT) and per audit_events row (`tool.{tool_name}`, kind=1 INTERNAL). Redacts sensitive fields by default; `--include-sensitive` disables redaction. Skip warnings on corrupt rows go to stderr. If `HOOKS_METRICS_OTLP_ENDPOINT` is set, also POSTs spans to the OTLP endpoint before printing JSON (`otlp.py`); `HOOKS_METRICS_OTLP_HEADERS` sets auth headers (`key=value,key2=value2`).
 
 ## Key conventions
 

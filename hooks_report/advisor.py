@@ -25,6 +25,9 @@ def guardrail_tuning(db: HooksDB, days: int = 7) -> list[TuningSuggestion]:
     - investigate: high fail rate + fast -> likely misconfigured
     - optimize: low fail rate + very slow -> optimize or add timeout
     - add-timeout: no configured timeout + high p99 -> add a timeout
+
+    Note: steps with fail_rate >=30% and avg_ms 500–2000ms match no category.
+    This gap is intentional — the signal is ambiguous (noisy but not clearly async).
     """
     steps = db.step_reliability(days=days)
     suggestions: list[TuningSuggestion] = []

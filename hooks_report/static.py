@@ -56,6 +56,7 @@ def render_static(db: HooksDB, verbose: bool = False) -> None:
             lambda: section_repo_dashboard(console, db),
             lambda: section_sessions_compact(console, db),
             lambda: section_projects_compact(console, db),
+            lambda: section_advisor(console, db),
         ]:
             try:
                 _fn()
@@ -253,6 +254,41 @@ def section_wow_compact(console: Console, db: HooksDB, verbose: bool = False) ->
             console.print(line)
 
     console.print()
+
+
+def section_advisor(console: Console, db: HooksDB) -> None:
+    """Advisor: guardrail tuning suggestions + hot failure sequences."""
+    from .advisor import guardrail_tuning
+
+    _sep(console)
+    console.print(Text("  Advisor — Tuning Suggestions", style="bold"))
+    console.print()
+
+    suggestions = guardrail_tuning(db)
+    if suggestions:
+        for s in suggestions:
+            line = Text()
+            color = "red" if s.severity == "red" else "yellow"
+            line.append(f"  [{s.category.upper()}] ", style=color)
+            line.append(f"{s.step}: {s.recommendation}")
+            console.print(line)
+            console.print(Text(f"         condition: {s.condition}", style="dim"))
+    else:
+        console.print(Text("  All steps look healthy — no tuning suggestions.", style="green"))
+
+    console.print()
+
+    sequences = db.hot_sequences()
+    if sequences:
+        console.print(Text("  Hot Failure Sequences", style="bold"))
+        console.print()
+        for seq in sequences:
+            line = Text()
+            line.append(f"  {seq.prev_step} → {seq.step}: ")
+            line.append(f"{seq.failures}/{seq.total} ", style="red")
+            line.append(f"({seq.fail_rate:.0f}% fail rate)")
+            console.print(line)
+        console.print()
 
 
 def section_projects_compact(console: Console, db: HooksDB) -> None:

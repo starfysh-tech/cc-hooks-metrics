@@ -50,3 +50,27 @@ def test_hot_sequences_no_session_column(test_db_path):
     db = HooksDB(test_db_path)
     assert db.hot_sequences(days=7) == []
     db.close()
+
+
+def test_period_aggregate_with_data(test_db_path, db):
+    """period_aggregate returns aggregate stats for the given time window."""
+    seed_hook_metrics(test_db_path, [
+        ("PreToolUse", "lint", 500, 0, "repo1", "sess-1"),
+        ("PreToolUse", "lint", 300, 0, "repo1", "sess-1"),
+        ("PreToolUse", "lint", 200, 1, "repo1", "sess-2"),
+    ])
+
+    agg = db.period_aggregate(days=7)
+    assert agg.total_runs == 3
+    assert agg.failures == 1
+    assert abs(agg.fail_rate - 33.3) < 1.0
+    assert agg.overhead_ms > 0
+    assert agg.unique_steps == 1
+
+
+def test_period_aggregate_empty_db(db):
+    """Empty DB returns zero-value aggregate, no crash."""
+    agg = db.period_aggregate(days=7)
+    assert agg.total_runs == 0
+    assert agg.failures == 0
+    assert agg.fail_rate == 0.0

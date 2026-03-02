@@ -62,7 +62,7 @@ def test_parse_headers_empty():
 
 
 def test_parse_headers_basic():
-    result = _parse_headers("Authorization=Bearer token123,X-Tenant=my-org")
+    result = _parse_headers("Authorization=Bearer token123,X-Tenant=my-org")  # gitleaks:allow
     assert result == {"Authorization": "Bearer token123", "X-Tenant": "my-org"}
 
 

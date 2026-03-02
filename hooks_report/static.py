@@ -7,7 +7,7 @@ from rich.text import Text
 from rich.table import Table
 
 from . import config, render
-from .db import HooksDB, ReliabilitySummary
+from .db import HooksDB, HooksDBError, ReliabilitySummary
 
 
 def render_static(db: HooksDB, verbose: bool = False) -> None:
@@ -50,8 +50,17 @@ def render_static(db: HooksDB, verbose: bool = False) -> None:
     section_wow_compact(console, db, verbose=verbose)
 
     if verbose:
-        section_perf_compact(console, db, summary)
-        section_projects_compact(console, db)
+        for _fn in [
+            lambda: section_perf_compact(console, db, summary),
+            lambda: section_step_reliability(console, db),
+            lambda: section_repo_dashboard(console, db),
+            lambda: section_sessions_compact(console, db),
+            lambda: section_projects_compact(console, db),
+        ]:
+            try:
+                _fn()
+            except HooksDBError as e:
+                console.print(Text(f"  Error: {e}", style="red"))
 
     # Closing border
     console.print()
@@ -260,6 +269,49 @@ def section_projects_compact(console: Console, db: HooksDB) -> None:
             console.print(line)
         else:
             console.print(Text(f"  {p.project:<32}  {p.total_min:>7.1f} min  {p.runs:>6} runs"))
+    console.print()
+
+
+def section_step_reliability(console: Console, db: HooksDB) -> None:
+    _sep(console)
+    console.print(Text("  Step Reliability (last 7d)", style="bold"))
+    console.print()
+
+    rows = db.step_reliability(days=7)
+    console.print(render.build_step_reliability_table(rows))
+    console.print()
+
+
+def section_repo_dashboard(console: Console, db: HooksDB) -> None:
+    _sep(console)
+    console.print(Text("  Repo Dashboard (last 7d)", style="bold"))
+    console.print()
+
+    repos = db.repo_profiles(days=7)
+    under_set = {r.repo for r in repos if r.distinct_steps < config.MIN_STEPS_FOR_COVERAGE and r.total_runs >= config.MIN_RUNS_FOR_TREND}
+    console.print(render.build_repo_profile_table(repos, under_set))
+    console.print()
+
+
+def section_sessions_compact(console: Console, db: HooksDB) -> None:
+    if not db._has_session_column():
+        _sep(console)
+        console.print(Text("  Sessions — session column not found (hook data predates session tracking)", style="dim"))
+        return
+    _sep(console)
+    console.print(Text("  Sessions (last 7d — worst 5 by overhead)", style="bold"))
+    console.print()
+
+    sessions = db.session_list(days=7, limit=config.SESSION_LIMIT_COMPACT + 10)
+    sessions.sort(key=lambda s: s.overhead_ms, reverse=True)
+    sessions = sessions[:config.SESSION_LIMIT_COMPACT]
+
+    if not sessions:
+        console.print(Text("  No session data found in last 7 days.", style="dim"))
+        console.print()
+        return
+
+    console.print(render.build_session_table(sessions))
     console.print()
 
 
@@ -557,3 +609,50 @@ def export_json(db: HooksDB) -> None:
     """Print OTel-aligned JSON to stdout."""
     data = db.export_data()
     print(json.dumps(data, indent=2))
+
+
+def render_step_drilldown(db: HooksDB, step_name: str) -> None:
+    console = Console()
+    data = db.step_drilldown(step_name, days=7)
+    if not data["by_repo"] and not data["daily"] and not data["exit_codes"]:
+        console.print(Text(f"  Step '{step_name}' not found in last 7 days.", style="yellow"))
+        return
+
+    _hdr(console, f"Step Drilldown: {step_name} (last 7d)")
+
+    console.print(Text("  By Repo:", style="bold"))
+    repo_table = Table(box=None, padding=(0, 1), show_header=True, header_style="bold")
+    repo_table.add_column("Repo", width=32)
+    repo_table.add_column("Runs", width=7, justify="right")
+    repo_table.add_column("Fails", width=6, justify="right")
+    repo_table.add_column("Avg", width=8, justify="right")
+    for repo, runs, failures, avg_ms in data["by_repo"]:
+        repo_table.add_row(repo, str(runs), render.failures_cell(failures), render.fmt_dur(avg_ms))
+    console.print(repo_table)
+
+    console.print(Text("  Daily:", style="bold"))
+    daily_table = Table(box=None, padding=(0, 1), show_header=True, header_style="bold")
+    daily_table.add_column("Date", width=12)
+    daily_table.add_column("Runs", width=7, justify="right")
+    daily_table.add_column("Fails", width=6, justify="right")
+    for day, runs, failures in data["daily"]:
+        daily_table.add_row(day, str(runs), render.failures_cell(failures))
+    console.print(daily_table)
+
+    console.print(Text("  Exit Codes:", style="bold"))
+    for code, count in data["exit_codes"]:
+        console.print(f"  exit={code}  {count}")
+
+
+def render_sessions(db: HooksDB) -> None:
+    console = Console()
+    if not db._has_session_column():
+        console.print(Text("  Session column not found — run hook-metrics.sh to collect session data.", style="yellow"))
+        return
+    sessions = db.session_list(days=7, limit=config.SESSION_LIMIT_STANDALONE)
+    if not sessions:
+        console.print(Text("  No session data found in last 7 days.", style="dim"))
+        return
+
+    _hdr(console, "Sessions (last 7d)")
+    console.print(render.build_session_table(sessions))

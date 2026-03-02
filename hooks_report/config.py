@@ -28,3 +28,7 @@ PAIN_INDEX_RED = 10.0
 PAIN_INDEX_YELLOW = 3.0
 MIN_STEPS_FOR_COVERAGE = 3
 DEFAULT_DB_PATH = os.path.expanduser("~/.claude/hooks.db")
+
+SESSION_LIMIT_COMPACT = 5      # --verbose section: worst 5 by overhead
+SESSION_LIMIT_TUI = 15         # TUI SessionsScreen
+SESSION_LIMIT_STANDALONE = 20  # --sessions standalone renderer

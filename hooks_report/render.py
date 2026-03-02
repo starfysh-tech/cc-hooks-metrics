@@ -6,7 +6,7 @@ from rich.table import Table
 from typing import Optional
 
 from . import config
-from .db import ReliabilitySummary, ActionItem
+from .db import ReliabilitySummary, ActionItem, SessionSummary, StepReliability, RepoProfile
 
 
 def fmt_dur(ms: int | float) -> str:
@@ -224,3 +224,69 @@ def fmt_session_dur(seconds: int) -> str:
     if seconds >= 60:
         return f"{seconds // 60}m{seconds % 60}s"
     return f"{seconds}s"
+
+
+def build_session_table(sessions: list[SessionSummary]) -> Table:
+    """Shared session table builder used by TUI and static renderers."""
+    table = Table(box=None, padding=(0, 1), show_header=True, header_style="bold")
+    table.add_column("Session", width=14)
+    table.add_column("Duration", width=10, justify="right")
+    table.add_column("Hooks", width=6, justify="right")
+    table.add_column("Fails", width=6, justify="right")
+    table.add_column("Tools", width=6, justify="right")
+    table.add_column("Overhead", width=10, justify="right")
+    table.add_column("Steps", width=6, justify="right")
+
+    for s in sessions:
+        table.add_row(
+            s.session_id[:12], fmt_session_dur(s.duration_s), str(s.hook_runs),
+            failures_cell(s.hook_failures),
+            str(s.tool_uses), fmt_dur(s.overhead_ms), str(s.distinct_steps),
+        )
+    return table
+
+
+def build_repo_profile_table(repos: list[RepoProfile], under_set: set[str]) -> Table:
+    """Shared repo profile table builder; marks under-instrumented repos with yellow ⚠."""
+    table = Table(box=None, padding=(0, 1), show_header=True, header_style="bold")
+    table.add_column("Repo", width=32)
+    table.add_column("Runs", width=6, justify="right")
+    table.add_column("Fail%", width=7, justify="right")
+    table.add_column("Steps", width=6, justify="right")
+    table.add_column("Overhead", width=10, justify="right")
+    table.add_column("Sessions", width=9, justify="right")
+    table.add_column("Guard", width=7, justify="right")
+
+    for r in repos:
+        if r.repo in under_set:
+            repo_cell = Text(f"{r.repo} ")
+            repo_cell.append("⚠", style="yellow")
+        else:
+            repo_cell = Text(r.repo)
+        session_cell = Text("—", style="dim") if r.session_count == 0 else Text(str(r.session_count))
+        guard_cell = Text("—", style="dim") if r.guardrail_density == 0 else Text(f"{r.guardrail_density:.2f}")
+        table.add_row(
+            repo_cell, str(r.total_runs), fail_rate_cell(r.fail_rate), str(r.distinct_steps),
+            fmt_dur(r.overhead_ms), session_cell, guard_cell,
+        )
+    return table
+
+
+def build_step_reliability_table(steps: list[StepReliability]) -> Table:
+    """Shared step reliability table builder, sorted by pain_index desc."""
+    table = Table(box=None, padding=(0, 1), show_header=True, header_style="bold")
+    table.add_column("Step", width=24)
+    table.add_column("Runs", width=6, justify="right")
+    table.add_column("Fail%", width=7, justify="right")
+    table.add_column("p50", width=7, justify="right")
+    table.add_column("p90", width=7, justify="right")
+    table.add_column("p99", width=7, justify="right")
+    table.add_column("Pain", width=7, justify="right")
+
+    for s in sorted(steps, key=lambda x: x.pain_index, reverse=True):
+        table.add_row(
+            s.step, str(s.total_runs), fail_rate_cell(s.fail_rate),
+            fmt_dur(s.p50_ms), fmt_dur(s.p90_ms), fmt_dur(s.p99_ms),
+            pain_index_cell(s.pain_index),
+        )
+    return table

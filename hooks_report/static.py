@@ -7,7 +7,7 @@ from rich.text import Text
 from rich.table import Table
 
 from . import config, render
-from .db import HooksDB, ReliabilitySummary
+from .db import HooksDB, HooksDBError, ReliabilitySummary
 
 
 def render_static(db: HooksDB, verbose: bool = False) -> None:
@@ -50,11 +50,17 @@ def render_static(db: HooksDB, verbose: bool = False) -> None:
     section_wow_compact(console, db, verbose=verbose)
 
     if verbose:
-        section_perf_compact(console, db, summary)
-        section_step_reliability(console, db)
-        section_repo_dashboard(console, db)
-        section_sessions_compact(console, db)
-        section_projects_compact(console, db)
+        for _fn in [
+            lambda: section_perf_compact(console, db, summary),
+            lambda: section_step_reliability(console, db),
+            lambda: section_repo_dashboard(console, db),
+            lambda: section_sessions_compact(console, db),
+            lambda: section_projects_compact(console, db),
+        ]:
+            try:
+                _fn()
+            except HooksDBError as e:
+                console.print(Text(f"  Error: {e}", style="red"))
 
     # Closing border
     console.print()
@@ -271,29 +277,8 @@ def section_step_reliability(console: Console, db: HooksDB) -> None:
     console.print(Text("  Step Reliability (last 7d)", style="bold"))
     console.print()
 
-    table = Table(box=None, padding=(0, 1), show_header=True, header_style="bold")
-    table.add_column("Step", width=24)
-    table.add_column("Runs", width=6, justify="right")
-    table.add_column("Fail%", width=7, justify="right")
-    table.add_column("p50", width=7, justify="right")
-    table.add_column("p90", width=7, justify="right")
-    table.add_column("p99", width=7, justify="right")
-    table.add_column("Pain", width=7, justify="right")
-
     rows = db.step_reliability(days=7)
-    rows.sort(key=lambda r: r.pain_index, reverse=True)
-    for row in rows:
-        table.add_row(
-            row.step,
-            str(row.total_runs),
-            render.fail_rate_cell(row.fail_rate),
-            render.fmt_dur(row.p50_ms),
-            render.fmt_dur(row.p90_ms),
-            render.fmt_dur(row.p99_ms),
-            render.pain_index_cell(row.pain_index),
-        )
-
-    console.print(table)
+    console.print(render.build_step_reliability_table(rows))
     console.print()
 
 
@@ -302,79 +287,31 @@ def section_repo_dashboard(console: Console, db: HooksDB) -> None:
     console.print(Text("  Repo Dashboard (last 7d)", style="bold"))
     console.print()
 
-    table = Table(box=None, padding=(0, 1), show_header=True, header_style="bold")
-    table.add_column("Repo", width=32)
-    table.add_column("Runs", width=6, justify="right")
-    table.add_column("Fail%", width=7, justify="right")
-    table.add_column("Steps", width=6, justify="right")
-    table.add_column("Overhead", width=10, justify="right")
-    table.add_column("Sessions", width=9, justify="right")
-    table.add_column("Guard", width=7, justify="right")
-
     repos = db.repo_profiles(days=7)
     under_set = {r.repo for r in repos if r.distinct_steps < config.MIN_STEPS_FOR_COVERAGE and r.total_runs >= config.MIN_RUNS_FOR_TREND}
-
-    for rp in repos:
-        if rp.repo in under_set:
-            repo_cell = Text(f"{rp.repo} ")
-            repo_cell.append("⚠", style="yellow")
-        else:
-            repo_cell = Text(rp.repo)
-
-        session_cell = Text(str(rp.session_count)) if rp.session_count > 0 else Text("—", style="dim")
-        guard_cell = Text(f"{rp.guardrail_density:.2f}") if rp.guardrail_density > 0 else Text("—", style="dim")
-
-        table.add_row(
-            repo_cell,
-            str(rp.total_runs),
-            render.fail_rate_cell(rp.fail_rate),
-            str(rp.distinct_steps),
-            render.fmt_dur(rp.overhead_ms),
-            session_cell,
-            guard_cell,
-        )
-
-    console.print(table)
+    console.print(render.build_repo_profile_table(repos, under_set))
     console.print()
 
 
 def section_sessions_compact(console: Console, db: HooksDB) -> None:
     if not db._has_session_column():
+        _sep(console)
+        console.print(Text("  Sessions — session column not found (hook data predates session tracking)", style="dim"))
         return
     _sep(console)
     console.print(Text("  Sessions (last 7d — worst 5 by overhead)", style="bold"))
     console.print()
 
-    sessions = db.session_list(days=7, limit=15)
+    sessions = db.session_list(days=7, limit=config.SESSION_LIMIT_COMPACT + 10)
     sessions.sort(key=lambda s: s.overhead_ms, reverse=True)
-    sessions = sessions[:5]
+    sessions = sessions[:config.SESSION_LIMIT_COMPACT]
 
     if not sessions:
         console.print(Text("  No session data found in last 7 days.", style="dim"))
         console.print()
         return
 
-    table = Table(box=None, padding=(0, 1), show_header=True, header_style="bold")
-    table.add_column("Session", width=14)
-    table.add_column("Duration", width=10)
-    table.add_column("Hooks", width=6, justify="right")
-    table.add_column("Fails", width=6, justify="right")
-    table.add_column("Tools", width=6, justify="right")
-    table.add_column("Overhead", width=10, justify="right")
-    table.add_column("Steps", width=6, justify="right")
-
-    for s in sessions:
-        table.add_row(
-            s.session_id[:12],
-            render.fmt_session_dur(s.duration_s),
-            str(s.hook_runs),
-            render.failures_cell(s.hook_failures),
-            str(s.tool_uses),
-            render.fmt_dur(s.overhead_ms),
-            str(s.distinct_steps),
-        )
-
-    console.print(table)
+    console.print(render.build_session_table(sessions))
     console.print()
 
 
@@ -712,31 +649,10 @@ def render_sessions(db: HooksDB) -> None:
     if not db._has_session_column():
         console.print(Text("  Session column not found — run hook-metrics.sh to collect session data.", style="yellow"))
         return
-    sessions = db.session_list(days=7, limit=20)
+    sessions = db.session_list(days=7, limit=config.SESSION_LIMIT_STANDALONE)
     if not sessions:
         console.print(Text("  No session data found in last 7 days.", style="dim"))
         return
 
     _hdr(console, "Sessions (last 7d)")
-
-    table = Table(box=None, padding=(0, 1), show_header=True, header_style="bold")
-    table.add_column("Session", width=14)
-    table.add_column("Duration", width=10)
-    table.add_column("Hooks", width=6, justify="right")
-    table.add_column("Fails", width=6, justify="right")
-    table.add_column("Tools", width=6, justify="right")
-    table.add_column("Overhead", width=10, justify="right")
-    table.add_column("Steps", width=6, justify="right")
-
-    for s in sessions:
-        table.add_row(
-            s.session_id[:12],
-            render.fmt_session_dur(s.duration_s),
-            str(s.hook_runs),
-            render.failures_cell(s.hook_failures),
-            str(s.tool_uses),
-            render.fmt_dur(s.overhead_ms),
-            str(s.distinct_steps),
-        )
-
-    console.print(table)
+    console.print(render.build_session_table(sessions))

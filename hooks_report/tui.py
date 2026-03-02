@@ -11,7 +11,7 @@ from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 
 from . import config, render
-from .db import HooksDB, HooksDBError, StepReliability, RepoProfile, SessionSummary
+from .db import HooksDB, HooksDBError
 
 
 def _perf_rich_table(db: HooksDB) -> Table:
@@ -97,66 +97,6 @@ def _projects_rich_table(db: HooksDB) -> Table:
     return table
 
 
-def _session_table(sessions: list[SessionSummary]) -> Table:
-    """Build a Rich Table for session list."""
-    table = Table(box=None, padding=(0, 1), show_header=True, header_style="bold")
-    table.add_column("Session", width=14)
-    table.add_column("Duration", width=10, justify="right")
-    table.add_column("Hooks", width=6, justify="right")
-    table.add_column("Fails", width=6, justify="right")
-    table.add_column("Tools", width=6, justify="right")
-    table.add_column("Overhead", width=10, justify="right")
-    table.add_column("Steps", width=6, justify="right")
-
-    for s in sessions:
-        table.add_row(
-            s.session_id[:12], render.fmt_session_dur(s.duration_s), str(s.hook_runs),
-            render.failures_cell(s.hook_failures),
-            str(s.tool_uses), render.fmt_dur(s.overhead_ms), str(s.distinct_steps),
-        )
-    return table
-
-
-def _step_reliability_table(steps: list[StepReliability]) -> Table:
-    """Build a Rich Table for step reliability, sorted by pain_index desc."""
-    table = Table(box=None, padding=(0, 1), show_header=True, header_style="bold")
-    table.add_column("Step", width=24)
-    table.add_column("Runs", width=6, justify="right")
-    table.add_column("Fail%", width=7, justify="right")
-    table.add_column("p50", width=7, justify="right")
-    table.add_column("p90", width=7, justify="right")
-    table.add_column("p99", width=7, justify="right")
-    table.add_column("Pain", width=7, justify="right")
-
-    for s in sorted(steps, key=lambda x: x.pain_index, reverse=True):
-        table.add_row(
-            s.step, str(s.total_runs), render.fail_rate_cell(s.fail_rate),
-            render.fmt_dur(s.p50_ms), render.fmt_dur(s.p90_ms), render.fmt_dur(s.p99_ms),
-            render.pain_index_cell(s.pain_index),
-        )
-    return table
-
-
-def _repo_profile_table(repos: list[RepoProfile], under_set: set[str]) -> Table:
-    """Build a Rich Table for repo profiles; marks under-instrumented repos."""
-    table = Table(box=None, padding=(0, 1), show_header=True, header_style="bold")
-    table.add_column("Repo", width=32)
-    table.add_column("Runs", width=6, justify="right")
-    table.add_column("Fail%", width=7, justify="right")
-    table.add_column("Steps", width=6, justify="right")
-    table.add_column("Overhead", width=10, justify="right")
-    table.add_column("Sessions", width=9, justify="right")
-    table.add_column("Guard", width=7, justify="right")
-
-    for r in repos:
-        repo_cell = Text(f"{r.repo} ⚠", style="yellow") if r.repo in under_set else Text(r.repo)
-        session_cell = Text("—", style="dim") if r.session_count == 0 else Text(str(r.session_count))
-        guard_cell = Text("—", style="dim") if r.guardrail_density == 0 else Text(f"{r.guardrail_density:.2f}")
-        table.add_row(
-            repo_cell, str(r.total_runs), render.fail_rate_cell(r.fail_rate), str(r.distinct_steps),
-            render.fmt_dur(r.overhead_ms), session_cell, guard_cell,
-        )
-    return table
 
 
 class DetailScreen(Screen):
@@ -258,7 +198,7 @@ class SessionsScreen(Screen):
                     Text("\n  Sessions — session column not found (hook data predates session tracking)", style="dim")
                 )
                 return
-            sessions = db.session_list(days=7, limit=15)
+            sessions = db.session_list(days=7, limit=config.SESSION_LIMIT_TUI)
             self.query_one("#sessions-header", Static).update(
                 Text(f"\n  Sessions (last 7d — {len(sessions)} sessions)", style="bold")
             )
@@ -267,7 +207,7 @@ class SessionsScreen(Screen):
                     Text("  No session data found in last 7 days.", style="dim")
                 )
             else:
-                self.query_one("#sessions-table", Static).update(_session_table(sessions))
+                self.query_one("#sessions-table", Static).update(render.build_session_table(sessions))
         except HooksDBError as e:
             self.query_one("#sessions-header", Static).update(
                 Text(f"\n  Sessions — DB error: {e}", style="red")
@@ -299,7 +239,7 @@ class StepDrillScreen(Screen):
             self.query_one("#step-header", Static).update(
                 Text(f"\n  Step Reliability (last 7d — {len(steps)} steps)", style="bold")
             )
-            self.query_one("#step-table", Static).update(_step_reliability_table(steps))
+            self.query_one("#step-table", Static).update(render.build_step_reliability_table(steps))
         except HooksDBError as e:
             self.query_one("#step-header", Static).update(
                 Text(f"\n  Step Reliability — DB error: {e}", style="red")
@@ -310,7 +250,7 @@ class StepDrillScreen(Screen):
             self.query_one("#repo-header", Static).update(
                 Text(f"\n  Repo Profiles (last 7d — {len(repos)} repos)", style="bold")
             )
-            self.query_one("#repo-table", Static).update(_repo_profile_table(repos, under_set))
+            self.query_one("#repo-table", Static).update(render.build_repo_profile_table(repos, under_set))
         except HooksDBError as e:
             self.query_one("#repo-header", Static).update(
                 Text(f"\n  Repo Profiles — DB error: {e}", style="red")
@@ -395,7 +335,8 @@ class HooksReportApp(App):
     def _restore_subtitle(self) -> None:
         try:
             self.sub_title = self._dashboard_subtitle(self.db.assess())
-        except Exception:
+        except HooksDBError as e:
+            self.log.warning(f"Failed to restore subtitle: {e}")
             self.sub_title = "Dashboard"
 
     def action_refresh_data(self) -> None:

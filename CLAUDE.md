@@ -27,6 +27,12 @@ When you identify enhancements, improvements, or refactor opportunities that are
 # OTel-aligned JSON export
 ~/.claude/hooks/hooks-report.sh --export
 
+# Show recent sessions
+~/.claude/hooks/hooks-report.sh --sessions
+
+# Drill into a specific step
+~/.claude/hooks/hooks-report.sh --step audit-logger
+
 # Pipe to Claude for analysis
 ~/.claude/hooks/hooks-report.sh --export | claude -p "Analyze and suggest next steps"
 ```
@@ -76,7 +82,7 @@ hooks_report/
   render.py         # Rich helpers: fmt_dur, bar_chart, trend_badge, pct_change, traffic_light_grid
   spans.py          # OTel span model: Span dataclass, hook_metric_to_span, audit_event_to_span, spans_to_dict
   static.py         # Rich Console output: compact sections + verbose sections + export_json
-  tui.py            # Textual app: HooksReportApp (dashboard) + DetailScreen
+  tui.py            # Textual app: HooksReportApp (dashboard) + DetailScreen + SessionsScreen + StepDrillScreen
 ```
 
 **hooks-report.sh** is now a 2-line Python wrapper:
@@ -94,7 +100,9 @@ PYTHONPATH="$(dirname "$0")" exec python3 -m hooks_report "$@"
 2. Action items grouped by step — one entry per step with all issues deduplicated (or "All clear")
 3. `section_wow_compact()` — REGR/SLOW trend lines only (FIXED/GONE suppressed in default)
 
-**TUI mode** (default when TTY): Dashboard with traffic lights + grouped action items. Press `d` to open the detail screen (perf table, WoW summary, top projects). All data accessible interactively without flags.
+**TUI mode** (default when TTY): Dashboard with traffic lights + grouped action items.
+Keybindings: `d` → detail (perf, WoW, projects), `s` → sessions, `t` → step reliability.
+All data accessible interactively without flags.
 
 **--verbose mode** adds compact sections + 7 legacy detail sections:
 - `section_perf_compact()` — per-step performance table (last 7d, avg ≥500ms or has timeout, max 12 rows)

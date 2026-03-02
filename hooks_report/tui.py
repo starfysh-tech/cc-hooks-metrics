@@ -257,6 +257,62 @@ class StepDrillScreen(Screen):
             )
 
 
+class AdvisorScreen(Screen):
+    """Advisor: guardrail tuning suggestions + hot failure sequences."""
+
+    BINDINGS = [
+        Binding("escape", "app.pop_screen", "Back"),
+        Binding("q", "app.quit", "Quit"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with ScrollableContainer():
+            yield Static(id="advisor-tuning")
+            yield Static(id="advisor-sequences")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        db: HooksDB = self.app.db  # type: ignore[attr-defined]
+        self.app.sub_title = "Advisor"
+
+        try:
+            from .advisor import guardrail_tuning
+            suggestions = guardrail_tuning(db)
+            if suggestions:
+                lines = Text()
+                lines.append("\n  Tuning Suggestions\n", style="bold")
+                for s in suggestions:
+                    color = "red" if s.severity == "red" else "yellow"
+                    lines.append(f"  [{s.category.upper()}] ", style=color)
+                    lines.append(f"{s.step}: {s.recommendation}\n")
+                    lines.append(f"         condition: {s.condition}\n", style="dim")
+            else:
+                lines = Text("\n  No tuning suggestions — all steps look healthy.", style="green")
+            self.query_one("#advisor-tuning", Static).update(lines)
+        except HooksDBError as e:
+            self.query_one("#advisor-tuning", Static).update(
+                Text(f"  Error loading suggestions: {e}", style="red")
+            )
+
+        try:
+            sequences = db.hot_sequences()
+            if sequences:
+                lines = Text()
+                lines.append("\n  Hot Failure Sequences\n", style="bold")
+                for seq in sequences:
+                    lines.append(f"  {seq.prev_step} → {seq.step}: ")
+                    lines.append(f"{seq.failures}/{seq.total} ", style="red")
+                    lines.append(f"({seq.fail_rate:.0f}% fail rate)\n")
+            else:
+                lines = Text("\n  No hot sequences detected.", style="dim")
+            self.query_one("#advisor-sequences", Static).update(lines)
+        except HooksDBError as e:
+            self.query_one("#advisor-sequences", Static).update(
+                Text(f"  Error loading sequences: {e}", style="red")
+            )
+
+
 class HooksReportApp(App):
     """Textual TUI for hooks report — dashboard rendered directly on App."""
 
@@ -272,6 +328,7 @@ class HooksReportApp(App):
         Binding("d", "show_detail", "Detail"),
         Binding("s", "show_sessions", "Sessions"),
         Binding("t", "show_steps", "Steps"),
+        Binding("a", "show_advisor", "Advisor"),
         Binding("r", "refresh_data", "Refresh"),
         Binding("e", "export", "Export"),
         Binding("q", "quit", "Quit"),
@@ -325,6 +382,9 @@ class HooksReportApp(App):
 
     def action_show_steps(self) -> None:
         self.push_screen(StepDrillScreen())
+
+    def action_show_advisor(self) -> None:
+        self.push_screen(AdvisorScreen())
 
     def pop_screen(self) -> AwaitComplete:
         """Restore dashboard subtitle when returning from any pushed screen."""

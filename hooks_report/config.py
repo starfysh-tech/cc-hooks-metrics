@@ -2,13 +2,14 @@ import os
 import re
 
 STEP_TIMEOUTS: dict[str, int] = {  # milliseconds
-    "audit-logger": 2000,
+    "audit-logger": 5_000,
+    "codex-review": 120_000,
     "mermaid-lint": 35000,
     "no-verify-gate": 5000,
     "check-pr-labels": 65000,
     "phi-check": 15000,
     "lint-check": 30000,
-    "migration-check": 5000,
+    "migration-check": 10_000,
     "stop-checks": 30000,
     "guard-security": 5000,
     "guard-python-lint": 30000,

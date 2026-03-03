@@ -99,6 +99,8 @@ class BrokenHook:
     step: str
     cmd: str
     count: int
+    last_fail: str
+    last_success: str | None
 
 
 @dataclass
@@ -609,7 +611,12 @@ GROUP BY repo ORDER BY SUM(duration_ms) DESC LIMIT 5
         rows = self._query("""
 SELECT step,
   COALESCE(NULLIF(TRIM(cmd),''), '(unknown)') AS cmd,
-  COUNT(*) AS cnt
+  COUNT(*) AS cnt,
+  MAX(ts) AS last_fail,
+  (SELECT MAX(ts) FROM hook_metrics h2
+   WHERE h2.step = hook_metrics.step
+   AND h2.exit_code != 127
+   AND h2.ts > datetime('now', '-7 days')) AS last_success
 FROM hook_metrics
 WHERE exit_code = 127 AND ts > datetime('now', '-7 days')
 GROUP BY step, cmd
@@ -618,8 +625,8 @@ LIMIT 5
 """)
 
         return [
-            BrokenHook(step=step, cmd=cmd, count=_int(cnt))
-            for step, cmd, cnt in rows
+            BrokenHook(step=step, cmd=cmd, count=_int(cnt), last_fail=last_fail, last_success=last_success)
+            for step, cmd, cnt, last_fail, last_success in rows
         ]
 
     # ── action_items() ────────────────────────────────────────────────────────
@@ -649,11 +656,18 @@ GROUP BY step
 
         # Broken hooks
         for bh in self.broken_hooks():
-            items.append(ActionItem(
-                category="BROKEN", severity="red", step=bh.step,
-                detail=f"{bh.step} — {bh.count} exit-127 (script path missing)",
-                fix=f"Verify {bh.cmd} exists at configured path",
-            ))
+            if bh.last_success and bh.last_success > bh.last_fail:
+                items.append(ActionItem(
+                    category="BROKEN", severity="yellow", step=bh.step,
+                    detail=f"{bh.step} — {bh.count} exit-127 (resolved — passing since {bh.last_success[:10]})",
+                    fix=f"Verify {bh.cmd} exists at configured path",
+                ))
+            else:
+                items.append(ActionItem(
+                    category="BROKEN", severity="red", step=bh.step,
+                    detail=f"{bh.step} — {bh.count} exit-127 (script path missing)",
+                    fix=f"Verify {bh.cmd} exists at configured path",
+                ))
 
         # Latency regressions
         regr_rows = self._query(f"""

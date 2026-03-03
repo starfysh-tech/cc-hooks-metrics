@@ -225,6 +225,21 @@ def _semantic_exit_placeholders() -> str:
     return ", ".join(f"'{s}'" for s in config.SEMANTIC_EXIT_STEPS)
 
 
+def _failure_filter(step_col: str = "step") -> str:
+    """SQL fragment: true if row counts as a failure.
+
+    Excludes semantic-exit steps (e.g. codex-review where exit=1 means findings,
+    not errors) and guardrail blocks (exit=2 from GUARDRAIL_STEPS means the guard
+    correctly blocked a dangerous action — not a failure).
+    """
+    sem = _semantic_exit_placeholders()
+    base = f"exit_code != 0 AND {step_col} NOT IN ({sem})"
+    if not config.GUARDRAIL_STEPS:
+        return base
+    guard = ", ".join(f"'{s}'" for s in config.GUARDRAIL_STEPS)
+    return f"{base} AND NOT ({step_col} IN ({guard}) AND exit_code = 2)"
+
+
 # ── Database class ───────────────────────────────────────────────────────────
 
 
@@ -283,14 +298,12 @@ class HooksDB:
     # ── assess() ─────────────────────────────────────────────────────────────
 
     def assess(self) -> ReliabilitySummary:
-        sem = _semantic_exit_placeholders()
-
         # Query 1: 4-category UNION
         rows = self._query(f"""
 SELECT 'reliability',
   COUNT(*),
-  SUM(CASE WHEN exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END),
-  ROUND(100.0 * SUM(CASE WHEN exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END)
+  SUM(CASE WHEN {_failure_filter()} THEN 1 ELSE 0 END),
+  ROUND(100.0 * SUM(CASE WHEN {_failure_filter()} THEN 1 ELSE 0 END)
         / NULLIF(COUNT(*), 0), 1)
 FROM hook_metrics WHERE ts > datetime('now', '-1 day')
 UNION ALL
@@ -437,15 +450,14 @@ FROM ranked GROUP BY step ORDER BY total_ms DESC
     # ── wow_summary() ────────────────────────────────────────────────────────
 
     def wow_summary(self) -> WowSummary:
-        sem = _semantic_exit_placeholders()
         row = self._query_one(f"""
 SELECT
   SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END) AS cur_runs,
   SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END) AS prev_runs,
-  SUM(CASE WHEN ts > datetime('now','-7 days') AND exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END) AS cur_fail,
-  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END) AS prev_fail,
-  ROUND(100.0 * SUM(CASE WHEN ts > datetime('now','-7 days') AND exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END),0),1) AS cur_rate,
-  ROUND(100.0 * SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END),0),1) AS prev_rate,
+  SUM(CASE WHEN ts > datetime('now','-7 days') AND {_failure_filter()} THEN 1 ELSE 0 END) AS cur_fail,
+  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND {_failure_filter()} THEN 1 ELSE 0 END) AS prev_fail,
+  ROUND(100.0 * SUM(CASE WHEN ts > datetime('now','-7 days') AND {_failure_filter()} THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END),0),1) AS cur_rate,
+  ROUND(100.0 * SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND {_failure_filter()} THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END),0),1) AS prev_rate,
   SUM(CASE WHEN ts > datetime('now','-7 days') THEN duration_ms ELSE 0 END) AS cur_ms,
   SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN duration_ms ELSE 0 END) AS prev_ms
 FROM hook_metrics
@@ -470,8 +482,8 @@ WHERE ts > datetime('now','-14 days')
         sem = _semantic_exit_placeholders()
         rows = self._query(f"""
 SELECT step,
-  SUM(CASE WHEN ts > datetime('now','-7 days') AND exit_code != 0 THEN 1 ELSE 0 END) AS cur_f,
-  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND exit_code != 0 THEN 1 ELSE 0 END) AS prev_f,
+  SUM(CASE WHEN ts > datetime('now','-7 days') AND {_failure_filter()} THEN 1 ELSE 0 END) AS cur_f,
+  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND {_failure_filter()} THEN 1 ELSE 0 END) AS prev_f,
   SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END) AS cur_r,
   SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END) AS prev_r
 FROM hook_metrics
@@ -500,8 +512,8 @@ LIMIT 5
         sem = _semantic_exit_placeholders()
         rows = self._query(f"""
 SELECT step,
-  SUM(CASE WHEN ts > datetime('now','-7 days') AND exit_code != 0 THEN 1 ELSE 0 END) AS cur_f,
-  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND exit_code != 0 THEN 1 ELSE 0 END) AS prev_f,
+  SUM(CASE WHEN ts > datetime('now','-7 days') AND {_failure_filter()} THEN 1 ELSE 0 END) AS cur_f,
+  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND {_failure_filter()} THEN 1 ELSE 0 END) AS prev_f,
   SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END) AS cur_r,
   SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END) AS prev_r
 FROM hook_metrics
@@ -575,7 +587,7 @@ SELECT
   COALESCE(NULLIF(REPLACE(repo, '/Users/{user}/Code/', ''), ''), '(global/unknown)') AS project,
   ROUND(SUM(duration_ms) / 1000.0 / 60.0, 1) AS total_min,
   COUNT(*) AS runs,
-  ROUND(100.0 * SUM(CASE WHEN exit_code != 0 AND step NOT IN ({_semantic_exit_placeholders()}) THEN 1 ELSE 0 END)
+  ROUND(100.0 * SUM(CASE WHEN {_failure_filter()} THEN 1 ELSE 0 END)
         / NULLIF(COUNT(*), 0), 1) AS fail_rate
 FROM hook_metrics WHERE ts > datetime('now', '-7 days')
 GROUP BY repo ORDER BY SUM(duration_ms) DESC LIMIT 5
@@ -614,7 +626,6 @@ LIMIT 5
 
     def action_items(self) -> list[ActionItem]:
         items: list[ActionItem] = []
-        sem = _semantic_exit_placeholders()
 
         # Timeout items
         timeout_rows = self._query("""
@@ -683,7 +694,7 @@ LIMIT 5
         fail_rows = self._query(f"""
 SELECT step, COUNT(*) AS cnt
 FROM hook_metrics
-WHERE exit_code != 0 AND exit_code != 127 AND step NOT IN ({sem})
+WHERE {_failure_filter()} AND exit_code != 127
   AND ts > datetime('now', '-1 day')
 GROUP BY step
 ORDER BY cnt DESC
@@ -707,8 +718,8 @@ LIMIT 5
         row = self._query_one(f"""
 SELECT
   COUNT(*) AS total_runs,
-  SUM(CASE WHEN exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END) AS failures,
-  ROUND(100.0 * SUM(CASE WHEN exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END)
+  SUM(CASE WHEN {_failure_filter()} THEN 1 ELSE 0 END) AS failures,
+  ROUND(100.0 * SUM(CASE WHEN {_failure_filter()} THEN 1 ELSE 0 END)
         / NULLIF(COUNT(*), 0), 1) AS fail_pct,
   SUM(CASE WHEN exit_code != 0 AND step IN ({sem}) THEN 1 ELSE 0 END) AS review_findings,
   SUM(CASE WHEN step IN ({sem}) THEN 1 ELSE 0 END) AS review_runs,
@@ -734,7 +745,6 @@ WHERE ts > datetime('now', '-1 day')
     # ── Step / Repo / Session analysis ────────────────────────────────────────
 
     def step_reliability(self, days: int = 7, repo: Optional[str] = None) -> list[StepReliability]:
-        sem = _semantic_exit_placeholders()
         repo_filter = "AND repo = ?" if repo else ""
         day_str = f"-{days} days"
         params: list = [day_str, day_str]
@@ -744,7 +754,7 @@ WHERE ts > datetime('now', '-1 day')
 WITH stats AS (
   SELECT step,
     COUNT(*) AS total_runs,
-    SUM(CASE WHEN exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END) AS failures,
+    SUM(CASE WHEN {_failure_filter()} THEN 1 ELSE 0 END) AS failures,
     ROUND(AVG(duration_ms), 1) AS avg_ms,
     MAX(duration_ms) AS max_ms,
     ROUND(SUM(duration_ms) / 1000.0, 2) AS total_s
@@ -796,11 +806,10 @@ ORDER BY s.failures DESC, s.avg_ms DESC
         return result
 
     def step_drilldown(self, step: str, days: int = 7) -> dict:
-        sem = _semantic_exit_placeholders()
         day_str = f"-{days} days"
         by_repo = self._query(f"""
 SELECT repo, COUNT(*) AS runs,
-  SUM(CASE WHEN exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END) AS failures,
+  SUM(CASE WHEN {_failure_filter()} THEN 1 ELSE 0 END) AS failures,
   ROUND(AVG(duration_ms), 1) AS avg_ms
 FROM hook_metrics
 WHERE step = ? AND ts > datetime('now', ?)
@@ -808,7 +817,7 @@ GROUP BY repo ORDER BY runs DESC LIMIT 10
 """, (step, day_str))
         daily = self._query(f"""
 SELECT DATE(ts) AS day, COUNT(*) AS runs,
-  SUM(CASE WHEN exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END) AS failures
+  SUM(CASE WHEN {_failure_filter()} THEN 1 ELSE 0 END) AS failures
 FROM hook_metrics
 WHERE step = ? AND ts > datetime('now', ?)
 GROUP BY day ORDER BY day
@@ -829,7 +838,6 @@ GROUP BY exit_code ORDER BY count DESC
         }
 
     def repo_profiles(self, days: int = 7) -> list[RepoProfile]:
-        sem = _semantic_exit_placeholders()
         user = getpass.getuser()
         has_session = self._has_session_column()
         session_col = "COUNT(DISTINCT session)" if has_session else "0"
@@ -838,8 +846,8 @@ GROUP BY exit_code ORDER BY count DESC
 SELECT
   COALESCE(NULLIF(REPLACE(repo, '/Users/{user}/Code/', ''), ''), '(global/unknown)') AS project,
   COUNT(*) AS total_runs,
-  SUM(CASE WHEN exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END) AS failures,
-  ROUND(100.0 * SUM(CASE WHEN exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END)
+  SUM(CASE WHEN {_failure_filter()} THEN 1 ELSE 0 END) AS failures,
+  ROUND(100.0 * SUM(CASE WHEN {_failure_filter()} THEN 1 ELSE 0 END)
         / NULLIF(COUNT(*), 0), 1) AS fail_rate,
   COUNT(DISTINCT step) AS distinct_steps,
   COALESCE(SUM(duration_ms), 0) AS overhead_ms,
@@ -885,7 +893,6 @@ ORDER BY runs DESC
     def session_list(self, days: int = 7, limit: int = 20) -> list[SessionSummary]:
         if not self._has_session_column():
             return []
-        sem = _semantic_exit_placeholders()
         day_str = f"-{days} days"
         rows = self._query(f"""
 SELECT
@@ -894,7 +901,7 @@ SELECT
   MAX(h.ts) AS last_ts,
   CAST((JULIANDAY(MAX(h.ts)) - JULIANDAY(MIN(h.ts))) * 86400 AS INTEGER) AS duration_s,
   COUNT(DISTINCT h.id) AS hook_runs,
-  SUM(CASE WHEN h.exit_code != 0 AND h.step NOT IN ({sem}) THEN 1 ELSE 0 END) AS hook_failures,
+  SUM(CASE WHEN {_failure_filter("h.step")} THEN 1 ELSE 0 END) AS hook_failures,
   COUNT(DISTINCT a.id) AS tool_uses,
   COALESCE(SUM(h.duration_ms), 0) AS overhead_ms,
   COUNT(DISTINCT h.step) AS distinct_steps
@@ -966,8 +973,8 @@ WITH ordered AS (
 )
 SELECT prev_step, step,
        COUNT(*) AS total,
-       SUM(CASE WHEN exit_code != 0 THEN 1 ELSE 0 END) AS failures,
-       ROUND(100.0 * SUM(CASE WHEN exit_code != 0 THEN 1 ELSE 0 END) / COUNT(*), 1) AS fail_rate
+       SUM(CASE WHEN {_failure_filter()} THEN 1 ELSE 0 END) AS failures,
+       ROUND(100.0 * SUM(CASE WHEN {_failure_filter()} THEN 1 ELSE 0 END) / COUNT(*), 1) AS fail_rate
 FROM ordered
 WHERE prev_step IS NOT NULL
 GROUP BY prev_step, step
@@ -982,13 +989,12 @@ LIMIT 10
 
     def period_aggregate(self, days: int = 7) -> PeriodAggregate:
         """Aggregate hook metrics over a time window."""
-        sem = _semantic_exit_placeholders()
         day_str = f"-{days} days"
         row = self._query_one(f"""
 SELECT
     COUNT(*) AS total_runs,
-    SUM(CASE WHEN exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END) AS failures,
-    ROUND(100.0 * SUM(CASE WHEN exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 1) AS fail_rate,
+    SUM(CASE WHEN {_failure_filter()} THEN 1 ELSE 0 END) AS failures,
+    ROUND(100.0 * SUM(CASE WHEN {_failure_filter()} THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 1) AS fail_rate,
     COALESCE(SUM(duration_ms), 0) AS overhead_ms,
     COUNT(DISTINCT step) AS unique_steps,
     COUNT(DISTINCT repo) AS unique_repos,
@@ -1013,21 +1019,19 @@ WHERE ts > datetime('now', ?)
     # ── Verbose failure section helpers ───────────────────────────────────────
 
     def failures_by_step(self) -> list[tuple[str, int]]:
-        sem = _semantic_exit_placeholders()
         rows = self._query(f"""
 SELECT step, COUNT(*) AS failures
 FROM hook_metrics
-WHERE exit_code != 0 AND step NOT IN ({sem})
+WHERE {_failure_filter()}
 GROUP BY step ORDER BY failures DESC
 """)
         return [(step, _int(cnt)) for step, cnt in rows]
 
     def exit_codes_by_step(self) -> list[tuple[str, int, int]]:
-        sem = _semantic_exit_placeholders()
         rows = self._query(f"""
 SELECT step, exit_code, COUNT(*) AS count
 FROM hook_metrics
-WHERE exit_code != 0 AND step NOT IN ({sem})
+WHERE {_failure_filter()}
 GROUP BY step, exit_code ORDER BY count DESC
 """)
         return [(step, _int(code), _int(cnt)) for step, code, cnt in rows]
@@ -1173,7 +1177,7 @@ SELECT
   SUM(duration_ms) AS total_ms,
   ROUND(SUM(duration_ms) / 1000.0 / 60.0, 1) AS total_min,
   COUNT(*) AS runs,
-  SUM(CASE WHEN exit_code != 0 THEN 1 ELSE 0 END) AS failures
+  SUM(CASE WHEN {_failure_filter()} THEN 1 ELSE 0 END) AS failures
 FROM hook_metrics WHERE ts > datetime('now', '-7 days')
 GROUP BY repo ORDER BY total_ms DESC LIMIT 15
 """)
@@ -1203,8 +1207,8 @@ GROUP BY repo, step ORDER BY repo, total_ms DESC
         sem = _semantic_exit_placeholders()
         rows = self._query(f"""
 SELECT step,
-  SUM(CASE WHEN ts > datetime('now','-7 days') AND exit_code != 0 THEN 1 ELSE 0 END) AS cur_f,
-  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND exit_code != 0 THEN 1 ELSE 0 END) AS prev_f,
+  SUM(CASE WHEN ts > datetime('now','-7 days') AND {_failure_filter()} THEN 1 ELSE 0 END) AS cur_f,
+  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND {_failure_filter()} THEN 1 ELSE 0 END) AS prev_f,
   SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END) AS cur_r,
   SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END) AS prev_r
 FROM hook_metrics
@@ -1221,8 +1225,8 @@ ORDER BY (cur_f - prev_f) DESC
         sem = _semantic_exit_placeholders()
         rows = self._query(f"""
 SELECT step,
-  SUM(CASE WHEN ts > datetime('now','-7 days') AND exit_code != 0 THEN 1 ELSE 0 END) AS cur_f,
-  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND exit_code != 0 THEN 1 ELSE 0 END) AS prev_f,
+  SUM(CASE WHEN ts > datetime('now','-7 days') AND {_failure_filter()} THEN 1 ELSE 0 END) AS cur_f,
+  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND {_failure_filter()} THEN 1 ELSE 0 END) AS prev_f,
   SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END) AS cur_r,
   SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END) AS prev_r
 FROM hook_metrics
@@ -1295,10 +1299,10 @@ GROUP BY hook ORDER BY cnt DESC
 SELECT
   SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END) AS cur_runs,
   SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END) AS prev_runs,
-  SUM(CASE WHEN ts > datetime('now','-7 days') AND exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END) AS cur_fail,
-  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END) AS prev_fail,
-  ROUND(100.0 * SUM(CASE WHEN ts > datetime('now','-7 days') AND exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END),0),1) AS cur_rate,
-  ROUND(100.0 * SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND exit_code != 0 AND step NOT IN ({sem}) THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END),0),1) AS prev_rate,
+  SUM(CASE WHEN ts > datetime('now','-7 days') AND {_failure_filter()} THEN 1 ELSE 0 END) AS cur_fail,
+  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND {_failure_filter()} THEN 1 ELSE 0 END) AS prev_fail,
+  ROUND(100.0 * SUM(CASE WHEN ts > datetime('now','-7 days') AND {_failure_filter()} THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END),0),1) AS cur_rate,
+  ROUND(100.0 * SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND {_failure_filter()} THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END),0),1) AS prev_rate,
   SUM(CASE WHEN ts > datetime('now','-7 days') THEN duration_ms ELSE 0 END) AS cur_ms,
   SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN duration_ms ELSE 0 END) AS prev_ms,
   SUM(CASE WHEN ts > datetime('now','-7 days') AND duration_ms > {config.SLOW_RUN_MS} THEN 1 ELSE 0 END) AS cur_slow,
@@ -1321,8 +1325,8 @@ FROM hook_metrics WHERE ts > datetime('now','-14 days')
 
         fail_rows = self._query(f"""
 SELECT step,
-  SUM(CASE WHEN ts > datetime('now','-7 days') AND exit_code != 0 THEN 1 ELSE 0 END) AS cur_f,
-  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND exit_code != 0 THEN 1 ELSE 0 END) AS prev_f,
+  SUM(CASE WHEN ts > datetime('now','-7 days') AND {_failure_filter()} THEN 1 ELSE 0 END) AS cur_f,
+  SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') AND {_failure_filter()} THEN 1 ELSE 0 END) AS prev_f,
   SUM(CASE WHEN ts > datetime('now','-7 days') THEN 1 ELSE 0 END) AS cur_r,
   SUM(CASE WHEN ts BETWEEN datetime('now','-14 days') AND datetime('now','-7 days') THEN 1 ELSE 0 END) AS prev_r
 FROM hook_metrics

@@ -68,7 +68,7 @@ SQL
 # Probabilistic pruning (~1% of calls): delete rows older than 30 days
 _maybe_prune_hooks_db() {
   if [ $(( RANDOM % 100 )) -eq 0 ]; then
-    _db_exec "DELETE FROM audit_events  WHERE ts < datetime('now','-30 days');
-              DELETE FROM hook_metrics  WHERE ts < datetime('now','-30 days');" >/dev/null 2>&1 || true
+    _db_exec "DELETE FROM audit_events WHERE id IN (SELECT id FROM audit_events WHERE ts < datetime('now','-30 days') LIMIT 500);
+              DELETE FROM hook_metrics WHERE id IN (SELECT id FROM hook_metrics WHERE ts < datetime('now','-30 days') LIMIT 500);" >/dev/null 2>&1 || true
   fi
 }

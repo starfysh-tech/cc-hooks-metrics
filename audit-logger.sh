@@ -20,8 +20,8 @@ ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Fallback chain covers PostToolUse (.tool_name), SubagentStart/Stop (.agent_type),
 # SessionEnd/UserPromptSubmit (.hook_event_name)
-tool=$(head -c 65536 "$TMPFILE" | jq -r '.tool_name // .agent_type // .hook_event_name // "unknown"')
-session=$(head -c 65536 "$TMPFILE" | jq -r '.session_id // "unknown"')
+tool=$(head -c 65536 "$TMPFILE" | jq -r '.tool_name // .agent_type // .hook_event_name // "unknown"') || tool="unknown"
+session=$(head -c 65536 "$TMPFILE" | jq -r '.session_id // "unknown"') || session="unknown"
 
 # Strip shell-injectable chars before heredoc interpolation
 tool=$(printf '%s' "$tool" | tr -d '`$\n\r')
@@ -36,10 +36,8 @@ full_payload=$(printf '%s' "$full_payload" | tr -d '`$')
 
 sqlite3 "$HOOKS_DB" >/dev/null <<SQL || echo "warn: audit-logger: sqlite3 insert failed" >&2
 PRAGMA busy_timeout=1000;
-BEGIN IMMEDIATE;
 INSERT INTO audit_events (ts, session, tool, input)
 VALUES ('$(_sql_escape "$ts")', '$(_sql_escape "$session")', '$(_sql_escape "$tool")', '$(_sql_escape "$full_payload")');
-COMMIT;
 SQL
 
 _maybe_prune_hooks_db

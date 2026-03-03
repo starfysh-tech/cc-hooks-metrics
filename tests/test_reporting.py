@@ -1,4 +1,3 @@
-import sqlite3
 from tests.conftest import seed_hook_metrics
 
 
@@ -58,6 +57,37 @@ def test_guardrail_summary_zero_blocks(db, test_db_path):
     assert len(rows) == 1
     assert rows[0].blocks == 0
     assert rows[0].block_rate == 0.0
+
+
+def test_guardrail_exit2_excluded_from_failures(db, test_db_path):
+    """Guardrail exit=2 (block) must not count as a reliability failure."""
+    import hooks_report.config as cfg
+    guard_step = next(iter(cfg.GUARDRAIL_STEPS))
+    seed_hook_metrics(test_db_path, [
+        # Normal hook — legitimate failure
+        ("PostToolUse", "audit-logger", 100, 1, "repo1", "s1"),
+        # Guardrail block (exit=2) — should NOT count as failure
+        ("PreToolUse", guard_step, 50, 2, "repo1", "s1"),
+        # Guardrail pass (exit=0) — not a failure
+        ("PreToolUse", guard_step, 40, 0, "repo1", "s1"),
+    ])
+
+    health = db.health_24h()
+    assert health.failures == 1, f"expected 1 failure, got {health.failures}"
+
+    rel = db.assess()
+    assert rel.rel_failures == 1, f"assess: expected 1, got {rel.rel_failures}"
+
+    wow = db.wow_summary()
+    assert wow.cur_fail == 1, f"wow_summary: expected 1, got {wow.cur_fail}"
+
+    steps = db.step_reliability()
+    guard_row = next((r for r in steps if r.step == guard_step), None)
+    assert guard_row is not None
+    assert guard_row.failures == 0, f"step_reliability: expected 0 guard failures, got {guard_row.failures}"
+
+    agg = db.period_aggregate()
+    assert agg.failures == 1, f"period_aggregate: expected 1, got {agg.failures}"
 
 
 def test_export_data_includes_guardrails(db, test_db_path):

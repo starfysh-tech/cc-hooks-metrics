@@ -56,7 +56,6 @@ ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 sqlite3 "$HOOKS_DB" >/dev/null <<SQL || echo "warn: hook-metrics: sqlite3 insert failed" >&2
 PRAGMA busy_timeout=1000;
-BEGIN IMMEDIATE;
 INSERT INTO hook_metrics (ts, hook, step, cmd, exit_code, duration_ms, real_s, user_s, sys_s, branch, sha, host, repo, session)
 VALUES (
   '$(_sql_escape "$ts")',
@@ -74,7 +73,6 @@ VALUES (
   '$(_sql_escape "$repo")',
   '$(_sql_escape "$SESSION_ID")'
 );
-COMMIT;
 SQL
 
 _maybe_prune_hooks_db

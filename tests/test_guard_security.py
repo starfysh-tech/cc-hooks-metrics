@@ -110,3 +110,19 @@ def test_empty_stdin():
         input="", capture_output=True, text=True,
     )
     assert r.returncode == 0
+
+def test_blocks_write_env():
+    r = _run({"tool_name": "Write", "tool_input": {"file_path": "/app/.env"}})
+    assert r.returncode == 2
+
+def test_blocks_edit_env():
+    r = _run({"tool_name": "Edit", "tool_input": {"file_path": ".env"}})
+    assert r.returncode == 2
+
+def test_blocks_read_env_local():
+    r = _run({"tool_name": "Read", "tool_input": {"file_path": ".env.local"}})
+    assert r.returncode == 2
+
+def test_allows_env_test():
+    r = _run({"tool_name": "Read", "tool_input": {"file_path": ".env.test"}})
+    assert r.returncode == 0

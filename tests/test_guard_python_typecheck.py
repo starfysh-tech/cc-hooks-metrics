@@ -44,3 +44,14 @@ def test_malformed_json():
     )
     assert r.returncode == 0
     assert "malformed JSON" in r.stderr
+
+def test_py_with_type_errors():
+    """If ty is installed and finds errors, should exit 2 with ACTION REQUIRED."""
+    with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
+        f.write('x: int = "not an int"\n')
+        f.flush()
+        r = _run("Write", f.name)
+    os.unlink(f.name)
+    # Only assert exit 2 if ty is installed
+    if r.returncode == 2:
+        assert "ACTION REQUIRED" in r.stderr

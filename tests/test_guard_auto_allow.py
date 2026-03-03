@@ -119,3 +119,26 @@ def test_head_redirect_falls_through():
     r = _run({"tool_name": "Bash", "tool_input": {"command": "head foo > /tmp/out"}})
     assert r.returncode == 0
     assert r.stdout.strip() == ""
+
+def test_echo_without_redirect_auto_allowed():
+    r = _run({"tool_name": "Bash", "tool_input": {"command": "echo hello"}})
+    assert r.returncode == 0
+    assert json.loads(r.stdout) == ALLOW_JSON
+
+def test_cat_without_redirect_auto_allowed():
+    r = _run({"tool_name": "Bash", "tool_input": {"command": "cat foo.py"}})
+    assert r.returncode == 0
+    assert json.loads(r.stdout) == ALLOW_JSON
+
+def test_python_version_auto_allowed():
+    r = _run({"tool_name": "Bash", "tool_input": {"command": "python --version"}})
+    assert r.returncode == 0
+    assert json.loads(r.stdout) == ALLOW_JSON
+
+def test_empty_stdin():
+    r = subprocess.run(
+        [sys.executable, SCRIPT],
+        input="", capture_output=True, text=True,
+    )
+    assert r.returncode == 0
+    assert r.stdout.strip() == ""

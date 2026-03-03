@@ -8,7 +8,11 @@
       "Bash(CLAUDE_HOOKS_DB=/nonexistent/path.db python3:*)",
       "Bash(rsync:*)",
       "Bash(~/.claude/hooks/hooks-report.sh:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(ty:*)",
+      "Bash(ls:*)",
+      "Bash(head:*)",
+      "Bash(cat:*)"
     ]
   }
 }

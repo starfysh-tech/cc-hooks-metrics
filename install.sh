@@ -56,6 +56,13 @@ else
   warn "jq not found (optional — session ID capture in hook-metrics.sh will use fallback)"
 fi
 
+if ty_ver=$(ty --version 2>&1); then
+  ok "ty ($ty_ver)"
+else
+  warn "ty not found (optional — guard-python-typecheck will be disabled)"
+  warn "  Install: brew install ty  OR  uv tool install ty  OR  cargo install ty"
+fi
+
 # Gate on overwrite *before* venv install to avoid wasted work
 if [ "$FORCE" -eq 0 ] && [ -d "$HOOKS_DIR" ]; then
   if [ ! -t 0 ]; then

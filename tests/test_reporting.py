@@ -1,4 +1,6 @@
-from tests.conftest import seed_hook_metrics
+from datetime import datetime, timedelta
+
+from tests.conftest import seed_hook_metrics, seed_hook_metrics_ext
 
 
 def test_guardrail_summary_with_blocks(db, test_db_path):
@@ -100,3 +102,50 @@ def test_export_data_includes_guardrails(db, test_db_path):
     assert "event_distribution" in data
     assert len(data["guardrails"]) == 1
     assert data["guardrails"][0]["hook.step"] == "guard-security"
+
+
+def _ts(days_ago: int) -> str:
+    """Return a datetime string N days in the past, for use as explicit ts values."""
+    return (datetime.now() - timedelta(days=days_ago)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def test_broken_hook_red_no_success(db, test_db_path):
+    """A step with only exit-127 failures and no successes is red."""
+    seed_hook_metrics_ext(test_db_path, [
+        {"hook": "PreToolUse", "step": "broken-step", "duration_ms": 10,
+         "exit_code": 127, "repo": "r1", "session": "s1", "ts": _ts(1)},
+        {"hook": "PreToolUse", "step": "broken-step", "duration_ms": 10,
+         "exit_code": 127, "repo": "r1", "session": "s1", "ts": _ts(2)},
+    ])
+    items = db.action_items()
+    broken = [i for i in items if i.category == "BROKEN" and i.step == "broken-step"]
+    assert len(broken) == 1
+    assert broken[0].severity == "red"
+
+
+def test_broken_hook_red_still_failing(db, test_db_path):
+    """A step whose last failure is more recent than its last success is red."""
+    seed_hook_metrics_ext(test_db_path, [
+        {"hook": "PreToolUse", "step": "broken-step", "duration_ms": 10,
+         "exit_code": 0, "repo": "r1", "session": "s1", "ts": _ts(3)},
+        {"hook": "PreToolUse", "step": "broken-step", "duration_ms": 10,
+         "exit_code": 127, "repo": "r1", "session": "s1", "ts": _ts(1)},
+    ])
+    items = db.action_items()
+    broken = [i for i in items if i.category == "BROKEN" and i.step == "broken-step"]
+    assert len(broken) == 1
+    assert broken[0].severity == "red"
+
+
+def test_broken_hook_yellow_resolved(db, test_db_path):
+    """A step whose last success is more recent than its last failure is yellow."""
+    seed_hook_metrics_ext(test_db_path, [
+        {"hook": "PreToolUse", "step": "broken-step", "duration_ms": 10,
+         "exit_code": 127, "repo": "r1", "session": "s1", "ts": _ts(3)},
+        {"hook": "PreToolUse", "step": "broken-step", "duration_ms": 10,
+         "exit_code": 0, "repo": "r1", "session": "s1", "ts": _ts(1)},
+    ])
+    items = db.action_items()
+    broken = [i for i in items if i.category == "BROKEN" and i.step == "broken-step"]
+    assert len(broken) == 1
+    assert broken[0].severity == "yellow"

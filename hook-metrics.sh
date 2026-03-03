@@ -12,7 +12,21 @@ else
   HOOK_EVENT="PostToolUse"; HOOK_NAME="$RAW"
 fi
 
-# Reconstruct command string for logging
+# Git repo root — captured early for path resolution, reused for DB insert
+repo=$(git rev-parse --show-toplevel 2>/dev/null | tr -d '`$\n\r' || echo "")
+
+# Resolve relative script path against git repo root
+_script="$1"
+if [[ "$_script" != /* ]]; then
+  if [[ -n "$repo" ]] && [[ -x "$repo/$_script" ]]; then
+    shift
+    set -- "$repo/$_script" "$@"
+  elif [[ "$_script" == */* ]]; then
+    echo "warn: hook-metrics: relative path '$_script' not resolved against '$repo', running as-is" >&2
+  fi
+fi
+
+# Reconstruct command string for logging AFTER resolution so cmd column logs resolved path
 CMD_ARGS="$*"
 
 # Capture stdin to temp file for passthrough
@@ -49,7 +63,6 @@ fi
 # Git context — strip shell-injectable chars before heredoc interpolation
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null | tr -d '`$\n\r' || echo "")
 sha=$(git rev-parse --short HEAD 2>/dev/null | tr -d '`$\n\r' || echo "")
-repo=$(git rev-parse --show-toplevel 2>/dev/null | tr -d '`$\n\r' || echo "")
 host=$(hostname 2>/dev/null | tr -d '`$\n\r' || echo "")
 
 ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")

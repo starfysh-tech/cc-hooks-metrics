@@ -43,3 +43,4 @@ def test_malformed_json():
         input="not json", capture_output=True, text=True,
     )
     assert r.returncode == 0
+    assert "malformed JSON" in r.stderr

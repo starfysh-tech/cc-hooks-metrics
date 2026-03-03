@@ -107,3 +107,4 @@ def test_malformed_json():
     )
     assert r.returncode == 0
     assert r.stdout.strip() == ""
+    assert "malformed JSON" in r.stderr

@@ -13,7 +13,8 @@ def main():
         if not raw.strip():
             sys.exit(0)
         payload = json.loads(raw)
-    except (json.JSONDecodeError, ValueError):
+    except json.JSONDecodeError:
+        print("guard-python-lint: malformed JSON from Claude, skipping check", file=sys.stderr)
         sys.exit(0)
 
     tool_name = payload.get("tool_name", "")

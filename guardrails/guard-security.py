@@ -8,14 +8,14 @@ import json
 import re
 import sys
 
-# Bash: destructive command patterns
+# Bash: destructive command patterns (pre-compiled)
 BASH_BLOCKED = [
-    r"rm\s+.*-[^\s]*[rf][^\s]*\s+(/|~|\$HOME|\*)",  # rm with force flags on dangerous targets
-    r"sudo\s+rm\b",                                    # sudo rm anything
-    r">\s*/etc/",                                       # redirect to system dirs
-    r"chmod\s+777\s+/",                                 # chmod 777 /
-    r"\bmkfs\.",                                         # format commands
-    r"\bdd\b.*\bof=/dev/",                              # raw device writes
+    re.compile(r"rm\s+.*-[^\s]*[rf][^\s]*\s+(/|~|\$HOME|\*)"),  # rm with force flags on dangerous targets
+    re.compile(r"sudo\s+rm\b"),                                    # sudo rm anything
+    re.compile(r">\s*/etc/"),                                       # redirect to system dirs
+    re.compile(r"chmod\s+777\s+/"),                                 # chmod 777 /
+    re.compile(r"\bmkfs\."),                                         # format commands
+    re.compile(r"\bdd\b.*\bof=/dev/"),                              # raw device writes
 ]
 
 # .env: block access except .env.sample/.env.example/.env.template/.env.test
@@ -31,8 +31,8 @@ FILE_TOOL_PATH_FIELDS = {
 def _check_bash(command: str) -> str | None:
     """Check a single command segment against blocked patterns."""
     for pattern in BASH_BLOCKED:
-        if re.search(pattern, command):
-            return f"Blocked: matches pattern {pattern!r}"
+        if pattern.search(command):
+            return f"Blocked: matches pattern {pattern.pattern!r}"
     if ENV_PATTERN.search(command):
         return "Blocked: .env file access via Bash"
     return None
@@ -64,10 +64,6 @@ def main():
             if reason:
                 print(f"ACTION REQUIRED: {reason}. Rethink your approach.", file=sys.stderr)
                 sys.exit(2)
-        # Also check .env in the full command (catches cat .env in chained)
-        if ENV_PATTERN.search(command):
-            print("ACTION REQUIRED: .env file access blocked. Use .env.example instead.", file=sys.stderr)
-            sys.exit(2)
         sys.exit(0)
 
     # File tool .env checks

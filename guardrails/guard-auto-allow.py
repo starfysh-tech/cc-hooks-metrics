@@ -7,25 +7,25 @@ import sys
 READ_ONLY_TOOLS = {"Read", "Glob", "Grep", "LS", "WebSearch", "LSP"}
 
 SAFE_BASH_PATTERNS = [
-    r"^ls\b",
-    r"^pwd$",
-    r"^echo\b(?!.*>)",
-    r"^cat\b(?!.*>)",
-    r"^head\b",
-    r"^tail\b",
-    r"^wc\b",
-    r"^which\b",
-    r"^type\b",
-    r"^file\b",
-    r"^stat\b",
-    r"^git\s+(status|log|diff|show|branch|tag|remote\s+-v)\b",
-    r"^npm\s+(list|ls|outdated|view)\b",
-    r"^pip\s+(list|show|freeze)\b",
-    r"^python\s+--version$",
-    r"^node\s+--version$",
+    re.compile(r"^ls\b"),
+    re.compile(r"^pwd$"),
+    re.compile(r"^echo\b(?!.*>)"),
+    re.compile(r"^cat\b(?!.*>)"),
+    re.compile(r"^head\b"),
+    re.compile(r"^tail\b"),
+    re.compile(r"^wc\b"),
+    re.compile(r"^which\b"),
+    re.compile(r"^type\b"),
+    re.compile(r"^file\b"),
+    re.compile(r"^stat\b"),
+    re.compile(r"^git\s+(status|log|diff|show|branch|tag|remote\s+-v)\b"),
+    re.compile(r"^npm\s+(list|ls|outdated|view)\b"),
+    re.compile(r"^pip\s+(list|show|freeze)\b"),
+    re.compile(r"^python\s+--version$"),
+    re.compile(r"^node\s+--version$"),
 ]
 
-CHAINING_CHARS = re.compile(r"[;|&`>]|\$\(")
+CHAINING_CHARS = re.compile(r"[;|&`>\n]|\$\(")
 ALLOW_OUTPUT = json.dumps({
     "hookSpecificOutput": {
         "hookEventName": "PermissionRequest",
@@ -60,7 +60,7 @@ def main():
             sys.exit(0)  # fall through to user prompt
         # Check against safe patterns
         for pattern in SAFE_BASH_PATTERNS:
-            if re.match(pattern, command):
+            if pattern.match(command):
                 print(ALLOW_OUTPUT)
                 sys.exit(0)
         # Not safelisted — fall through

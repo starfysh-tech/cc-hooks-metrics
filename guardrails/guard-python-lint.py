@@ -38,6 +38,7 @@ def main():
         # ruff not installed — skip gracefully
         sys.exit(0)
     except subprocess.TimeoutExpired:
+        print(f"guard-python-lint: ruff timed out after 25s on {file_path}, check skipped", file=sys.stderr)
         sys.exit(0)
 
     if result.returncode != 0 and result.stdout.strip():

@@ -86,10 +86,13 @@ hooks_report/
   tui.py            # Textual app: HooksReportApp (dashboard) + DetailScreen + SessionsScreen + StepDrillScreen
 ```
 
-**hooks-report.sh** is now a 2-line Python wrapper:
+**hooks-report.sh** is a Python wrapper with venv detection:
 ```bash
 #!/usr/bin/env bash
-PYTHONPATH="$(dirname "$0")" exec python3 -m hooks_report "$@"
+DIR="$(cd "$(dirname "$0")" && pwd)"
+PYTHON="${DIR}/.venv/bin/python3"
+[ -x "$PYTHON" ] || PYTHON=python3
+PYTHONPATH="$DIR" exec "$PYTHON" -m hooks_report "$@"
 ```
 
 **hooks-report-legacy.sh** — original bash (rollback reference).

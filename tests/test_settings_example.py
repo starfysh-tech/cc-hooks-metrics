@@ -38,5 +38,9 @@ def test_referenced_scripts_exist():
 def test_guardrails_example_is_valid_json():
     with open("settings-guardrails-example.json") as f:
         data = json.load(f)
-    keys = [k for k in data if not k.startswith("_")]
-    assert len(keys) >= 4
+    expected = {
+        "PreToolUse_guard-security", "PostToolUse_guard-python-lint",
+        "PostToolUse_guard-python-typecheck", "PermissionRequest_guard-auto-allow",
+    }
+    actual = {k for k in data if not k.startswith("_")}
+    assert actual == expected

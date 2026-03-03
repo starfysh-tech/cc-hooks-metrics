@@ -101,8 +101,8 @@ def test_malformed_json():
         [sys.executable, SCRIPT],
         input="not json", capture_output=True, text=True,
     )
-    assert r.returncode == 0
-    assert "malformed JSON" in r.stderr
+    assert r.returncode == 2
+    assert "BLOCKED" in r.stderr
 
 def test_empty_stdin():
     r = subprocess.run(
@@ -110,6 +110,7 @@ def test_empty_stdin():
         input="", capture_output=True, text=True,
     )
     assert r.returncode == 0
+    assert "empty stdin" in r.stderr
 
 def test_blocks_write_env():
     r = _run({"tool_name": "Write", "tool_input": {"file_path": "/app/.env"}})
@@ -125,4 +126,34 @@ def test_blocks_read_env_local():
 
 def test_allows_env_test():
     r = _run({"tool_name": "Read", "tool_input": {"file_path": ".env.test"}})
+    assert r.returncode == 0
+
+
+# --- Additional blocked patterns (I8) ---
+
+def test_blocks_rm_rf_home_var():
+    r = _run({"tool_name": "Bash", "tool_input": {"command": "rm -rf $HOME"}})
+    assert r.returncode == 2
+
+def test_blocks_rm_rf_star():
+    r = _run({"tool_name": "Bash", "tool_input": {"command": "rm -rf *"}})
+    assert r.returncode == 2
+
+def test_blocks_pipe_chained_destructive():
+    r = _run({"tool_name": "Bash", "tool_input": {"command": "echo foo | rm -rf /"}})
+    assert r.returncode == 2
+
+def test_blocks_newline_chained():
+    r = _run({"tool_name": "Bash", "tool_input": {"command": "ls\nrm -rf /"}})
+    assert r.returncode == 2
+
+def test_blocks_multiedit_env():
+    r = _run({"tool_name": "MultiEdit", "tool_input": {"file_path": ".env"}})
+    assert r.returncode == 2
+
+
+# --- Null tool_input (T2) ---
+
+def test_tool_input_null():
+    r = _run({"tool_name": "Bash", "tool_input": None})
     assert r.returncode == 0

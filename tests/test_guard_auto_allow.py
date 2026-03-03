@@ -142,3 +142,60 @@ def test_empty_stdin():
     )
     assert r.returncode == 0
     assert r.stdout.strip() == ""
+    assert "empty stdin" in r.stderr
+
+
+# --- Destructive git subcommands fall through (C0) ---
+
+def test_git_branch_delete_falls_through():
+    r = _run({"tool_name": "Bash", "tool_input": {"command": "git branch -D main"}})
+    assert r.returncode == 0
+    assert r.stdout.strip() == ""
+
+def test_git_branch_delete_lower_falls_through():
+    r = _run({"tool_name": "Bash", "tool_input": {"command": "git branch -d feat"}})
+    assert r.returncode == 0
+    assert r.stdout.strip() == ""
+
+def test_git_branch_delete_long_falls_through():
+    r = _run({"tool_name": "Bash", "tool_input": {"command": "git branch --delete main"}})
+    assert r.returncode == 0
+    assert r.stdout.strip() == ""
+
+def test_git_branch_rename_falls_through():
+    r = _run({"tool_name": "Bash", "tool_input": {"command": "git branch -m old new"}})
+    assert r.returncode == 0
+    assert r.stdout.strip() == ""
+
+def test_git_tag_delete_falls_through():
+    r = _run({"tool_name": "Bash", "tool_input": {"command": "git tag -d v1.0"}})
+    assert r.returncode == 0
+    assert r.stdout.strip() == ""
+
+def test_git_tag_create_falls_through():
+    r = _run({"tool_name": "Bash", "tool_input": {"command": "git tag v1.0"}})
+    assert r.returncode == 0
+    assert r.stdout.strip() == ""
+
+def test_git_branch_list_still_allowed():
+    r = _run({"tool_name": "Bash", "tool_input": {"command": "git branch"}})
+    assert r.returncode == 0
+    assert json.loads(r.stdout) == ALLOW_JSON
+
+def test_git_branch_verbose_still_allowed():
+    r = _run({"tool_name": "Bash", "tool_input": {"command": "git branch -v"}})
+    assert r.returncode == 0
+    assert json.loads(r.stdout) == ALLOW_JSON
+
+def test_git_tag_list_still_allowed():
+    r = _run({"tool_name": "Bash", "tool_input": {"command": "git tag -l"}})
+    assert r.returncode == 0
+    assert json.loads(r.stdout) == ALLOW_JSON
+
+
+# --- Null tool_input (T2) ---
+
+def test_tool_input_null():
+    r = _run({"tool_name": "Bash", "tool_input": None})
+    assert r.returncode == 0
+    assert r.stdout.strip() == ""

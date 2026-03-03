@@ -58,3 +58,52 @@ def test_malformed_json():
     )
     assert r.returncode == 0
     assert "malformed JSON" in r.stderr
+
+
+# --- Fake-ruff tests (C4: unconditional block path validation) ---
+
+def test_lint_errors_block_with_fake_ruff(tmp_path):
+    """Unconditionally test lint errors produce exit 2 (no ruff dependency)."""
+    fake_ruff = tmp_path / "ruff"
+    fake_ruff.write_text("#!/bin/sh\necho 'test.py:1:1: F401 imported but unused'\nexit 1\n")
+    fake_ruff.chmod(0o755)
+    bad_py = tmp_path / "bad.py"
+    bad_py.write_text("import os\n")
+    env = os.environ.copy()
+    env["PATH"] = str(tmp_path) + ":" + env.get("PATH", "")
+    r = subprocess.run(
+        [sys.executable, SCRIPT],
+        input=json.dumps({"tool_name": "Write", "tool_input": {"file_path": str(bad_py)}}),
+        capture_output=True, text=True, env=env,
+    )
+    assert r.returncode == 2
+    assert "ACTION REQUIRED" in r.stderr
+
+def test_ruff_internal_error_logs_warning(tmp_path):
+    """ruff exit != 0 with no stdout should log warning but not block."""
+    fake_ruff = tmp_path / "ruff"
+    fake_ruff.write_text("#!/bin/sh\necho 'internal error' >&2\nexit 2\n")
+    fake_ruff.chmod(0o755)
+    bad_py = tmp_path / "bad.py"
+    bad_py.write_text("x = 1\n")
+    env = os.environ.copy()
+    env["PATH"] = str(tmp_path) + ":" + env.get("PATH", "")
+    r = subprocess.run(
+        [sys.executable, SCRIPT],
+        input=json.dumps({"tool_name": "Write", "tool_input": {"file_path": str(bad_py)}}),
+        capture_output=True, text=True, env=env,
+    )
+    assert r.returncode == 0
+    assert "no findings on stdout" in r.stderr
+
+
+# --- Null tool_input (T2) ---
+
+def test_tool_input_null():
+    payload = {"tool_name": "Write", "tool_input": None}
+    r = subprocess.run(
+        [sys.executable, SCRIPT],
+        input=json.dumps(payload),
+        capture_output=True, text=True,
+    )
+    assert r.returncode == 0

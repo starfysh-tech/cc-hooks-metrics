@@ -12,6 +12,7 @@ def main():
     try:
         raw = sys.stdin.read()
         if not raw.strip():
+            print("guard-python-typecheck: empty stdin, no-op", file=sys.stderr)
             sys.exit(0)
         payload = json.loads(raw)
     except json.JSONDecodeError:
@@ -22,7 +23,7 @@ def main():
     if tool_name not in APPLICABLE_TOOLS:
         sys.exit(0)
 
-    file_path = payload.get("tool_input", {}).get("file_path", "")
+    file_path = (payload.get("tool_input") or {}).get("file_path", "")
     if not file_path.endswith(".py"):
         sys.exit(0)
 
@@ -40,6 +41,9 @@ def main():
     except subprocess.TimeoutExpired:
         print(f"guard-python-typecheck: ty timed out after 25s on {file_path}, check skipped", file=sys.stderr)
         sys.exit(0)
+    except OSError as e:
+        print(f"guard-python-typecheck: OS error running ty: {e}", file=sys.stderr)
+        sys.exit(0)
 
     if result.returncode != 0 and result.stdout.strip():
         output = result.stdout
@@ -50,6 +54,8 @@ def main():
             file=sys.stderr,
         )
         sys.exit(2)
+    elif result.returncode != 0:
+        print(f"guard-python-typecheck: ty exited {result.returncode} with no findings on stdout, check skipped", file=sys.stderr)
 
     sys.exit(0)
 

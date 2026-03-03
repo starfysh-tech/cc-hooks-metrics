@@ -1246,7 +1246,7 @@ ORDER BY (cur_avg - prev_avg) DESC
     def guardrail_summary(self, days: int = 7) -> list[GuardrailSummary]:
         if not config.GUARDRAIL_STEPS:
             return []
-        steps_list = ", ".join(f"'{s}'" for s in config.GUARDRAIL_STEPS)
+        placeholders = ", ".join("?" for _ in config.GUARDRAIL_STEPS)
         day_str = f"-{days} days"
         rows = self._query(f"""
 SELECT step,
@@ -1255,9 +1255,9 @@ SELECT step,
   ROUND(100.0 * SUM(CASE WHEN exit_code = 2 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 1) AS block_rate,
   ROUND(AVG(duration_ms), 1) AS avg_ms
 FROM hook_metrics
-WHERE step IN ({steps_list}) AND ts > datetime('now', ?)
+WHERE step IN ({placeholders}) AND ts > datetime('now', ?)
 GROUP BY step ORDER BY total_runs DESC
-""", (day_str,))
+""", (*tuple(config.GUARDRAIL_STEPS), day_str))
         return [
             GuardrailSummary(step=step, total_runs=_int(tr), blocks=_int(bl),
                              block_rate=_opt_float(br), avg_ms=float(am))

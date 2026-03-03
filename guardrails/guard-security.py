@@ -39,22 +39,23 @@ def _check_bash(command: str) -> str | None:
 
 
 def _split_chained(command: str) -> list[str]:
-    """Split on &&, ||, ;, | to check each segment."""
-    return re.split(r"\s*(?:&&|\|\||;|\|)\s*", command)
+    """Split on &&, ||, ;, |, newline to check each segment."""
+    return re.split(r"\s*(?:&&|\|\||;|\||\n)\s*", command)
 
 
 def main():
     try:
         raw = sys.stdin.read()
         if not raw.strip():
+            print("guard-security: empty stdin, no-op", file=sys.stderr)
             sys.exit(0)
         payload = json.loads(raw)
     except json.JSONDecodeError:
-        print("guard-security: malformed JSON from Claude, skipping check", file=sys.stderr)
-        sys.exit(0)
+        print("guard-security: BLOCKED — malformed JSON, cannot verify safety", file=sys.stderr)
+        sys.exit(2)
 
     tool_name = payload.get("tool_name", "")
-    tool_input = payload.get("tool_input", {})
+    tool_input = payload.get("tool_input") or {}
 
     # Bash command checks
     if tool_name == "Bash":

@@ -52,8 +52,12 @@ def main():
     tool_name = payload.get("tool_name", "")
     tool_input = payload.get("tool_input") or {}
 
-    # Unconditionally allow read-only tools
+    # Unconditionally allow read-only tools (except .env reads)
     if tool_name in READ_ONLY_TOOLS:
+        if tool_name == "Read":
+            file_path = tool_input.get("file_path", "")
+            if re.search(r"\.env\b(?!\.(sample|example|template|test))", file_path):
+                sys.exit(0)  # defer to user prompt
         print(ALLOW_OUTPUT)
         sys.exit(0)
 
@@ -66,6 +70,7 @@ def main():
         # Check against safe patterns
         for pattern in SAFE_BASH_PATTERNS:
             if pattern.match(command):
+                print(f"guard-auto-allow: auto-allowed Bash: {command!r}", file=sys.stderr)
                 print(ALLOW_OUTPUT)
                 sys.exit(0)
         # Not safelisted — fall through

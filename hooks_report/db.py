@@ -1306,7 +1306,7 @@ SELECT
 FROM hook_metrics WHERE ts > datetime('now','-14 days')
 """)
 
-        # SUM without GROUP BY always returns exactly one row (NULLs if empty)
+        # aggregate without GROUP BY always returns exactly one row
         assert row is not None
         cur_runs = _int(row[0])
         prev_runs = _int(row[1])

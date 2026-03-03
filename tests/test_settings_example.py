@@ -30,6 +30,10 @@ def test_referenced_scripts_exist():
         "hook-metrics.sh",
         "audit-logger.sh",
         "mermaid-lint.sh",
+        "guardrails/guard-security.py",
+        "guardrails/guard-python-lint.py",
+        "guardrails/guard-python-typecheck.py",
+        "guardrails/guard-auto-allow.py",
     }
     for script in expected_scripts:
         assert os.path.exists(script), f"Referenced script missing: {script}"

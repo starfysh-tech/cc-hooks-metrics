@@ -193,6 +193,12 @@ def test_git_tag_list_still_allowed():
     assert json.loads(r.stdout) == ALLOW_JSON
 
 
+def test_read_env_falls_through():
+    r = _run({"tool_name": "Read", "tool_input": {"file_path": ".env"}})
+    assert r.returncode == 0
+    assert r.stdout.strip() == ""
+
+
 # --- Null tool_input (T2) ---
 
 def test_tool_input_null():

@@ -94,6 +94,33 @@ def test_ty_internal_error_logs_warning(tmp_path):
     assert "no findings on stdout" in r.stderr
 
 
+def test_empty_stdin_exits_zero():
+    r = subprocess.run(
+        [sys.executable, SCRIPT],
+        input="", capture_output=True, text=True,
+    )
+    assert r.returncode == 0
+    assert "empty stdin" in r.stderr
+
+
+def test_truncation_over_500_chars(tmp_path):
+    """ty output >500 chars is truncated in the ACTION REQUIRED message."""
+    fake_ty = tmp_path / "ty"
+    fake_ty.write_text("#!/bin/sh\npython3 -c \"print('x'*600)\"\nexit 1\n")
+    fake_ty.chmod(0o755)
+    bad_py = tmp_path / "bad.py"
+    bad_py.write_text('x: int = "not an int"\n')
+    env = os.environ.copy()
+    env["PATH"] = str(tmp_path) + ":" + env.get("PATH", "")
+    r = subprocess.run(
+        [sys.executable, SCRIPT],
+        input=json.dumps({"tool_name": "Write", "tool_input": {"file_path": str(bad_py)}}),
+        capture_output=True, text=True, env=env,
+    )
+    assert r.returncode == 2
+    assert "... (truncated" in r.stderr
+
+
 # --- Null tool_input (T2) ---
 
 def test_tool_input_null():

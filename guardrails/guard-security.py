@@ -39,7 +39,12 @@ def _check_bash(command: str) -> str | None:
 
 
 def _split_chained(command: str) -> list[str]:
-    """Split on &&, ||, ;, |, newline to check each segment."""
+    """Split on &&, ||, ;, |, newline to check each segment.
+
+    Does not split on backtick or $() subshell syntax. Patterns use
+    .search() which scans through subshell wrappers, but any future
+    ^-anchored pattern would not.
+    """
     return re.split(r"\s*(?:&&|\|\||;|\||\n)\s*", command)
 
 

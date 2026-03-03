@@ -152,6 +152,12 @@ def test_blocks_multiedit_env():
     assert r.returncode == 2
 
 
+def test_blocks_cat_env_unchained():
+    r = _run({"tool_name": "Bash", "tool_input": {"command": "cat .env"}})
+    assert r.returncode == 2
+    assert "ACTION REQUIRED" in r.stderr
+
+
 # --- Null tool_input (T2) ---
 
 def test_tool_input_null():

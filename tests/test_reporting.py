@@ -48,3 +48,25 @@ def test_guardrail_summary_empty_steps(db, monkeypatch):
     monkeypatch.setattr(config, "GUARDRAIL_STEPS", set())
     rows = db.guardrail_summary()
     assert rows == []
+
+
+def test_guardrail_summary_zero_blocks(db, test_db_path):
+    seed_hook_metrics(test_db_path, [
+        ("PreToolUse", "guard-security", 50, 0, "repo1", "s1"),
+    ])
+    rows = db.guardrail_summary()
+    assert len(rows) == 1
+    assert rows[0].blocks == 0
+    assert rows[0].block_rate == 0.0
+
+
+def test_export_data_includes_guardrails(db, test_db_path):
+    seed_hook_metrics(test_db_path, [
+        ("PreToolUse", "guard-security", 50, 2, "repo1", "s1"),
+        ("PostToolUse", "audit-logger", 100, 0, "repo1", "s1"),
+    ])
+    data = db.export_data()
+    assert "guardrails" in data
+    assert "event_distribution" in data
+    assert len(data["guardrails"]) == 1
+    assert data["guardrails"][0]["hook.step"] == "guard-security"

@@ -33,3 +33,10 @@ def test_referenced_scripts_exist():
     }
     for script in expected_scripts:
         assert os.path.exists(script), f"Referenced script missing: {script}"
+
+
+def test_guardrails_example_is_valid_json():
+    with open("settings-guardrails-example.json") as f:
+        data = json.load(f)
+    keys = [k for k in data if not k.startswith("_")]
+    assert len(keys) >= 4

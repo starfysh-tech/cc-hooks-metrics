@@ -32,6 +32,7 @@ Enhancements identified but out of scope for current work. Review before plannin
 - [x] **guardrails/ deploy step** — `rsync -a --delete guardrails/ ~/.claude/hooks/guardrails/` should be added to the deploy command in CLAUDE.md and an install script
 - [ ] **guard-security.py: extend to MultiEdit** — `MultiEdit` tool (multiple edits in one call) is not yet handled in `FILE_TOOL_PATH_FIELDS`; its payload uses `file_path` but the array of edits may span multiple paths
 - [ ] **guard-auto-allow.py: WebFetch safe-list** — `WebFetch` reads from URLs; could be auto-allowed similar to `WebSearch` when added to `READ_ONLY_TOOLS`
+- [ ] **broken_hooks: successes CTE misses semantic exit steps** — `successes` CTE counts only `exit_code = 0`; for `SEMANTIC_EXIT_STEPS` (e.g., `codex-review`), exit 1 means "findings found" not failure, so those steps will never show `last_success` and could show misleadingly persistent red severity if they ever hit exit-127
 - [ ] **spans.py: add `__post_init__` validation to `Span`** — validate `len(trace_id)==32`, `len(span_id)==16`, `kind in (1,3)`, `status_code in (1,2)`, `start <= end` (PR #2 review comment)
 - [ ] **spans.py: consider `IntEnum` for `SpanKind` and `StatusCode`** — replaces magic ints with self-documenting values, serializes to int naturally (PR #2 review comment)
 - [ ] **spans.py / db.py: no test coverage** — factory functions, timestamp parsing, redaction logic, ID generation all untested; privacy-sensitive export pipeline warrants attention (PR #2 review comment)

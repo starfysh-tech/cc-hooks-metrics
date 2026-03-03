@@ -613,14 +613,14 @@ WITH fails AS (
   SELECT step,
     COALESCE(NULLIF(TRIM(cmd),''), '(unknown)') AS cmd,
     COUNT(*) AS cnt,
-    strftime('%Y-%m-%d', MAX(ts)) AS last_fail
+    MAX(ts) AS last_fail
   FROM hook_metrics
   WHERE exit_code = 127 AND ts > datetime('now', '-7 days')
   GROUP BY step, cmd
   ORDER BY cnt DESC LIMIT 5
 ),
 successes AS (
-  SELECT step, strftime('%Y-%m-%d', MAX(ts)) AS last_success
+  SELECT step, MAX(ts) AS last_success
   FROM hook_metrics
   WHERE exit_code = 0 AND ts > datetime('now', '-7 days')
   GROUP BY step
@@ -665,7 +665,7 @@ GROUP BY step
             if bh.last_success and bh.last_success > bh.last_fail:
                 items.append(ActionItem(
                     category="BROKEN", severity="yellow", step=bh.step,
-                    detail=f"{bh.step} — {bh.count} exit-127 (resolved — passing since {bh.last_success})",
+                    detail=f"{bh.step} — {bh.count} exit-127 (resolved — passing since {bh.last_success[:10]})",
                     fix=fix,
                 ))
             else:

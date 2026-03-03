@@ -49,19 +49,27 @@ def render_static(db: HooksDB, verbose: bool = False) -> None:
     # Trends section (REGR/SLOW in default; full WoW + FIXED/GONE in verbose)
     section_wow_compact(console, db, verbose=verbose)
 
+    # Guardrails section — shown when guardrail data exists (both default and verbose)
+    try:
+        section_guardrails(console, db)
+    except HooksDBError as e:
+        console.print(Text(f"  Guardrails — Error: {e}", style="red"))
+
     if verbose:
-        for _fn in [
-            lambda: section_perf_compact(console, db, summary),
-            lambda: section_step_reliability(console, db),
-            lambda: section_repo_dashboard(console, db),
-            lambda: section_sessions_compact(console, db),
-            lambda: section_projects_compact(console, db),
-            lambda: section_advisor(console, db),
-        ]:
+        verbose_sections = [
+            ("Performance", lambda: section_perf_compact(console, db, summary)),
+            ("Step Reliability", lambda: section_step_reliability(console, db)),
+            ("Repo Dashboard", lambda: section_repo_dashboard(console, db)),
+            ("Sessions", lambda: section_sessions_compact(console, db)),
+            ("Projects", lambda: section_projects_compact(console, db)),
+            ("Advisor", lambda: section_advisor(console, db)),
+            ("Event Distribution", lambda: section_event_distribution(console, db)),
+        ]
+        for name, _fn in verbose_sections:
             try:
                 _fn()
             except HooksDBError as e:
-                console.print(Text(f"  Error: {e}", style="red"))
+                console.print(Text(f"  {name} — Error: {e}", style="red"))
 
     # Closing border
     console.print()
@@ -348,6 +356,29 @@ def section_sessions_compact(console: Console, db: HooksDB) -> None:
         return
 
     console.print(render.build_session_table(sessions))
+    console.print()
+
+
+def section_guardrails(console: Console, db: HooksDB) -> None:
+    guardrails = db.guardrail_summary()
+    if not guardrails:
+        return
+    _sep(console)
+    console.print(Text("  Guardrails (last 7d)", style="bold"))
+    console.print()
+    console.print(render.build_guardrail_table(guardrails))
+    console.print()
+
+
+def section_event_distribution(console: Console, db: HooksDB) -> None:
+    dist = db.event_distribution()
+    if not dist:
+        return
+    _sep(console)
+    console.print(Text("  Event Distribution (last 7d)", style="bold"))
+    console.print()
+    for event, count in dist:
+        console.print(Text(f"  {event:<24} {count:>6}"))
     console.print()
 
 

@@ -1,26 +1,115 @@
 {
   "hooks": {
+    "Setup": [{
+      "hooks": [{
+        "type": "command",
+        "command": "$HOME/.claude/hooks/hook-metrics.sh Setup:event-log $HOME/.claude/hooks/audit-logger.sh",
+        "timeout": 5
+      }]
+    }],
+    "SessionStart": [{
+      "hooks": [{
+        "type": "command",
+        "command": "$HOME/.claude/hooks/hook-metrics.sh SessionStart:event-log $HOME/.claude/hooks/audit-logger.sh",
+        "timeout": 5
+      }]
+    }],
+    "SessionEnd": [{
+      "hooks": [{
+        "type": "command",
+        "command": "$HOME/.claude/hooks/hook-metrics.sh SessionEnd:event-log $HOME/.claude/hooks/audit-logger.sh",
+        "timeout": 5
+      }]
+    }],
+    "UserPromptSubmit": [{
+      "hooks": [{
+        "type": "command",
+        "command": "$HOME/.claude/hooks/hook-metrics.sh UserPromptSubmit:event-log $HOME/.claude/hooks/audit-logger.sh",
+        "timeout": 5
+      }]
+    }],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|Read|Glob|Grep|WebFetch|WebSearch",
+        "hooks": [{
+          "type": "command",
+          "command": "$HOME/.claude/hooks/hook-metrics.sh PreToolUse:event-log $HOME/.claude/hooks/audit-logger.sh",
+          "timeout": 5
+        }]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Bash|Edit|Write|Read|Glob|Grep|WebFetch|WebSearch",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "[ -x $HOME/.claude/hooks/hook-metrics.sh ] && $HOME/.claude/hooks/hook-metrics.sh PostToolUse:audit-logger ~/.claude/hooks/audit-logger.sh || ~/.claude/hooks/audit-logger.sh",
-            "timeout": 2
-          }
-        ]
+        "hooks": [{
+          "type": "command",
+          "command": "[ -x $HOME/.claude/hooks/hook-metrics.sh ] && $HOME/.claude/hooks/hook-metrics.sh PostToolUse:audit-logger ~/.claude/hooks/audit-logger.sh || ~/.claude/hooks/audit-logger.sh",
+          "timeout": 2
+        }]
       },
       {
         "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/hook-metrics.sh PostToolUse:mermaid-lint ~/.claude/hooks/mermaid-lint.sh",
-            "timeout": 35
-          }
-        ]
+        "hooks": [{
+          "type": "command",
+          "command": "~/.claude/hooks/hook-metrics.sh PostToolUse:mermaid-lint ~/.claude/hooks/mermaid-lint.sh",
+          "timeout": 35
+        }]
       }
-    ]
+    ],
+    "PostToolUseFailure": [{
+      "matcher": "Bash|Edit|Write|Read|Glob|Grep|WebFetch|WebSearch",
+      "hooks": [{
+        "type": "command",
+        "command": "$HOME/.claude/hooks/hook-metrics.sh PostToolUseFailure:event-log $HOME/.claude/hooks/audit-logger.sh",
+        "timeout": 5
+      }]
+    }],
+    "PermissionRequest": [{
+      "hooks": [{
+        "type": "command",
+        "command": "$HOME/.claude/hooks/hook-metrics.sh PermissionRequest:event-log $HOME/.claude/hooks/audit-logger.sh",
+        "timeout": 5
+      }]
+    }],
+    "Notification": [{
+      "hooks": [{
+        "type": "command",
+        "command": "$HOME/.claude/hooks/hook-metrics.sh Notification:event-log $HOME/.claude/hooks/audit-logger.sh",
+        "timeout": 5
+      }]
+    }],
+    "Stop": [{
+      "hooks": [{
+        "type": "command",
+        "command": "$HOME/.claude/hooks/hook-metrics.sh Stop:event-log $HOME/.claude/hooks/audit-logger.sh",
+        "timeout": 5
+      }]
+    }],
+    "PreCompact": [{
+      "hooks": [{
+        "type": "command",
+        "command": "$HOME/.claude/hooks/hook-metrics.sh PreCompact:event-log $HOME/.claude/hooks/audit-logger.sh",
+        "timeout": 5
+      }]
+    }],
+    "SubagentStart": [{
+      "hooks": [{
+        "type": "command",
+        "command": "$HOME/.claude/hooks/hook-metrics.sh SubagentStart:event-log $HOME/.claude/hooks/audit-logger.sh",
+        "timeout": 5
+      }]
+    }],
+    "SubagentStop": [{
+      "hooks": [{
+        "type": "command",
+        "command": "$HOME/.claude/hooks/hook-metrics.sh SubagentStop:event-log $HOME/.claude/hooks/audit-logger.sh",
+        "timeout": 5
+      }]
+    }],
+
+    "_guardrails_doc": "Optional guardrail hooks below. See settings-guardrails-example.json for copy-paste wiring.",
+    "_PreToolUse_guardrails": "COMMENTED — add guard-security PreToolUse hook from settings-guardrails-example.json to enable",
+    "_PostToolUse_guardrails": "COMMENTED — add guard-python-lint / guard-python-typecheck PostToolUse hooks to enable",
+    "_PermissionRequest_guardrails": "COMMENTED — add guard-auto-allow PermissionRequest hook to enable"
   }
 }

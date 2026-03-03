@@ -1,0 +1,33 @@
+{
+  "_doc": "Copy these entries into your settings.json hooks sections to enable guardrails. Each is wrapped by hook-metrics.sh for tracking.",
+  "PreToolUse_guard-security": {
+    "hooks": [{
+      "type": "command",
+      "command": "$HOME/.claude/hooks/hook-metrics.sh PreToolUse:guard-security python3 $HOME/.claude/hooks/guardrails/guard-security.py",
+      "timeout": 5
+    }]
+  },
+  "PostToolUse_guard-python-lint": {
+    "matcher": "Edit|Write",
+    "hooks": [{
+      "type": "command",
+      "command": "$HOME/.claude/hooks/hook-metrics.sh PostToolUse:guard-python-lint python3 $HOME/.claude/hooks/guardrails/guard-python-lint.py",
+      "timeout": 30
+    }]
+  },
+  "PostToolUse_guard-python-typecheck": {
+    "matcher": "Edit|Write",
+    "hooks": [{
+      "type": "command",
+      "command": "$HOME/.claude/hooks/hook-metrics.sh PostToolUse:guard-python-typecheck python3 $HOME/.claude/hooks/guardrails/guard-python-typecheck.py",
+      "timeout": 30
+    }]
+  },
+  "PermissionRequest_guard-auto-allow": {
+    "hooks": [{
+      "type": "command",
+      "command": "$HOME/.claude/hooks/hook-metrics.sh PermissionRequest:guard-auto-allow python3 $HOME/.claude/hooks/guardrails/guard-auto-allow.py",
+      "timeout": 5
+    }]
+  }
+}

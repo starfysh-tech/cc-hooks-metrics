@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+"""PostToolUse guardrail: runs ruff check after Write/Edit on .py files."""
+import json
+import os
+import subprocess
+import sys
+
+APPLICABLE_TOOLS = {"Write", "Edit"}
+
+
+def main():
+    try:
+        raw = sys.stdin.read()
+        if not raw.strip():
+            print("guard-python-lint: empty stdin, no-op", file=sys.stderr)
+            sys.exit(0)
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        print("guard-python-lint: malformed JSON from Claude, skipping check", file=sys.stderr)
+        sys.exit(0)
+
+    tool_name = payload.get("tool_name", "")
+    if tool_name not in APPLICABLE_TOOLS:
+        sys.exit(0)
+
+    file_path = (payload.get("tool_input") or {}).get("file_path", "")
+    if not file_path.endswith(".py"):
+        sys.exit(0)
+
+    if not os.path.isfile(file_path):
+        sys.exit(0)
+
+    try:
+        result = subprocess.run(
+            ["ruff", "check", "--no-fix", file_path],
+            capture_output=True, text=True, timeout=25,
+        )
+    except FileNotFoundError:
+        # ruff not installed — skip gracefully
+        sys.exit(0)
+    except subprocess.TimeoutExpired:
+        print(f"guard-python-lint: ruff timed out after 25s on {file_path}, check skipped", file=sys.stderr)
+        sys.exit(0)
+    except OSError as e:
+        print(f"guard-python-lint: OS error running ruff: {e}", file=sys.stderr)
+        sys.exit(0)
+
+    if result.returncode != 0 and result.stdout.strip():
+        print(
+            f"ACTION REQUIRED: Use the Edit tool to fix these ruff lint errors in {file_path}:\n{result.stdout}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    elif result.returncode != 0:
+        print(f"guard-python-lint: ruff exited {result.returncode} with no findings on stdout, check skipped", file=sys.stderr)
+
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

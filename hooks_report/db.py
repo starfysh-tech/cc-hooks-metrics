@@ -194,6 +194,15 @@ class PeriodAggregate:
     end_ts: str
 
 
+@dataclass
+class GuardrailSummary:
+    step: str
+    total_runs: int
+    blocks: int
+    block_rate: Optional[float]
+    avg_ms: float
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -1234,6 +1243,37 @@ ORDER BY (cur_avg - prev_avg) DESC
 
     # ── export_data() ────────────────────────────────────────────────────────
 
+    def guardrail_summary(self, days: int = 7) -> list[GuardrailSummary]:
+        if not config.GUARDRAIL_STEPS:
+            return []
+        placeholders = ", ".join("?" for _ in config.GUARDRAIL_STEPS)
+        day_str = f"-{days} days"
+        rows = self._query(f"""
+SELECT step,
+  COUNT(*) AS total_runs,
+  SUM(CASE WHEN exit_code = 2 THEN 1 ELSE 0 END) AS blocks,
+  ROUND(100.0 * SUM(CASE WHEN exit_code = 2 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 1) AS block_rate,
+  ROUND(AVG(duration_ms), 1) AS avg_ms
+FROM hook_metrics
+WHERE step IN ({placeholders}) AND ts > datetime('now', ?)
+GROUP BY step ORDER BY total_runs DESC
+""", (*tuple(config.GUARDRAIL_STEPS), day_str))
+        return [
+            GuardrailSummary(step=step, total_runs=_int(tr), blocks=_int(bl),
+                             block_rate=_opt_float(br), avg_ms=float(am))
+            for step, tr, bl, br, am in rows
+        ]
+
+    def event_distribution(self, days: int = 7) -> list[tuple[str, int]]:
+        day_str = f"-{days} days"
+        rows = self._query("""
+SELECT hook, COUNT(*) AS cnt
+FROM hook_metrics
+WHERE ts > datetime('now', ?)
+GROUP BY hook ORDER BY cnt DESC
+""", (day_str,))
+        return [(hook, _int(cnt)) for hook, cnt in rows]
+
     def export_data(self) -> dict:
         sem = _semantic_exit_placeholders()
         ts_now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -1253,16 +1293,18 @@ SELECT
 FROM hook_metrics WHERE ts > datetime('now','-14 days')
 """)
 
+        # SUM without GROUP BY always returns exactly one row (NULLs if empty)
+        assert row is not None
         cur_runs = _int(row[0])
         prev_runs = _int(row[1])
         cur_fail = _int(row[2])
         prev_fail = _int(row[3])
         cur_rate = _opt_float(row[4])
         prev_rate = _opt_float(row[5])
-        cur_ms = _int(row[6])  # type: ignore[index]
-        prev_ms = _int(row[7])  # type: ignore[index]
-        cur_slow = _int(row[8])  # type: ignore[index]
-        prev_slow = _int(row[9])  # type: ignore[index]
+        cur_ms = _int(row[6])
+        prev_ms = _int(row[7])
+        cur_slow = _int(row[8])
+        prev_slow = _int(row[9])
 
         fail_rows = self._query(f"""
 SELECT step,
@@ -1377,6 +1419,20 @@ HAVING (cur_r = 0 AND prev_r >= 5) OR (prev_r = 0 AND cur_r >= 5)
             "failure_trends": failure_trends,
             "latency_trends": latency_trends,
             "coverage_gaps": coverage_gaps,
+            "guardrails": [
+                {
+                    "hook.step": g.step,
+                    "claude.hooks.runs": g.total_runs,
+                    "claude.hooks.blocks": g.blocks,
+                    "claude.hooks.block_rate": g.block_rate,
+                    "claude.hooks.duration.avg_ms": g.avg_ms,
+                }
+                for g in self.guardrail_summary()
+            ],
+            "event_distribution": [
+                {"hook.event": ev, "claude.hooks.runs": cnt}
+                for ev, cnt in self.event_distribution()
+            ],
         }
 
     # ── Span export ───────────────────────────────────────────────────────────

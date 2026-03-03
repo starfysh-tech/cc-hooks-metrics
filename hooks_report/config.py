@@ -10,8 +10,13 @@ STEP_TIMEOUTS: dict[str, int] = {  # milliseconds
     "lint-check": 30000,
     "migration-check": 5000,
     "stop-checks": 30000,
+    "guard-security": 5000,
+    "guard-python-lint": 30000,
+    "guard-python-typecheck": 30000,
+    "guard-auto-allow": 5000,
 }
 SEMANTIC_EXIT_STEPS = {"codex-review"}
+GUARDRAIL_STEPS = {"guard-security", "guard-python-lint", "guard-python-typecheck", "guard-auto-allow"}
 SKIP_HOOKS_PATTERN = re.compile(r"^(fake-fail|ok-step|echo|test-hook|main|event-log)$")
 
 IMPACT_THRESHOLD_S = 30

@@ -13,6 +13,7 @@ Five independently implementable phases. Each has a plan file in `docs/plans/`. 
 - [x] **Phase 3: TUI Screens + CLI Integration** — add `SessionsScreen` (press `s`) and `StepDrillScreen` (press `t`) to the TUI; add `--sessions` and `--step NAME` CLI flags; fix TUI subtitle bug on screen pop. Requires Phase 2 query layer. See plan: `docs/plans/2026-02-28-feat-tui-screens-sessions-steps-plan.md`
 - [x] **Phase 4: Advisor + Feedback Loops** — add `advisor.py` with guardrail tuning suggestions and periodic privacy-safe summaries; add `AdvisorScreen` (press `a`); add `--summary daily|weekly` and `--export-summary` CLI flags. Requires Phase 2 `step_reliability()`; hot sequences require Phase 1. See plan: `docs/plans/2026-02-28-feat-advisor-feedback-loops-plan.md`
 - [x] **Phase 5: Optional OTEL Backend Export** *(optional)* — send spans to any OTLP endpoint via `HOOKS_METRICS_OTLP_ENDPOINT` env var; direct OTLP/HTTP JSON (no SDK dependency). Synthetic session root spans with deterministic trace IDs. Correlates with Claude Code native telemetry via shared `claude.session_id`. Requires Phase 1. See plan: `docs/plans/idempotent-tumbling-sonnet.md`
+- [x] **Phase 6: Expand Hook Coverage + Guardrails + Reporting** — expanded `settings-example.json` to all 13 Claude Code events via `event-log` step; added 4 opt-in guardrail scripts (`guard-security`, `guard-python-lint`, `guard-python-typecheck`, `guard-auto-allow`) in `guardrails/`; added `guardrail_summary()` + `event_distribution()` DB queries; added guardrail table to static report and TUI `StepDrillScreen`; added `settings-guardrails-example.json` for copy-paste wiring.
 
 ## Parking Lot
 
@@ -28,6 +29,9 @@ Enhancements identified but out of scope for current work. Review before plannin
 - [ ] **Configurable thresholds** — `config.py` constants (regression %, timeout %, slow run threshold) are hardcoded; a user-level config file would allow tuning without editing source
 - [ ] **audit-logger.sh: single `head` read** — currently reads `$TMPFILE` three times (`tool`, `session`, `full_payload`); consolidate into one `payload_head=$(head -c 65536 "$TMPFILE")` variable (PR #2 review comment)
 - [x] **spans.py: replace slice unpacking with full destructure** — done in PR #2 fix-up commit
+- [ ] **guardrails/ deploy step** — `rsync -a --delete guardrails/ ~/.claude/hooks/guardrails/` should be added to the deploy command in CLAUDE.md and an install script
+- [ ] **guard-security.py: extend to MultiEdit** — `MultiEdit` tool (multiple edits in one call) is not yet handled in `FILE_TOOL_PATH_FIELDS`; its payload uses `file_path` but the array of edits may span multiple paths
+- [ ] **guard-auto-allow.py: WebFetch safe-list** — `WebFetch` reads from URLs; could be auto-allowed similar to `WebSearch` when added to `READ_ONLY_TOOLS`
 - [ ] **spans.py: add `__post_init__` validation to `Span`** — validate `len(trace_id)==32`, `len(span_id)==16`, `kind in (1,3)`, `status_code in (1,2)`, `start <= end` (PR #2 review comment)
 - [ ] **spans.py: consider `IntEnum` for `SpanKind` and `StatusCode`** — replaces magic ints with self-documenting values, serializes to int naturally (PR #2 review comment)
 - [ ] **spans.py / db.py: no test coverage** — factory functions, timestamp parsing, redaction logic, ID generation all untested; privacy-sensitive export pipeline warrants attention (PR #2 review comment)

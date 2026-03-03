@@ -6,7 +6,7 @@ from rich.table import Table
 from typing import Optional
 
 from . import config
-from .db import ReliabilitySummary, ActionItem, SessionSummary, StepReliability, RepoProfile
+from .db import ReliabilitySummary, ActionItem, SessionSummary, StepReliability, RepoProfile, GuardrailSummary
 
 
 def fmt_dur(ms: int | float) -> str:
@@ -289,4 +289,20 @@ def build_step_reliability_table(steps: list[StepReliability]) -> Table:
             fmt_dur(s.p50_ms), fmt_dur(s.p90_ms), fmt_dur(s.p99_ms),
             pain_index_cell(s.pain_index),
         )
+    return table
+
+
+def build_guardrail_table(guardrails: list[GuardrailSummary]) -> Table:
+    """Table for guardrail summary: step | runs | blocks | block% | avg."""
+    table = Table(box=None, padding=(0, 1), show_header=True, header_style="bold")
+    table.add_column("Guard", width=24)
+    table.add_column("Runs", width=7, justify="right")
+    table.add_column("Blocks", width=7, justify="right")
+    table.add_column("Block%", width=8, justify="right")
+    table.add_column("Avg", width=8, justify="right")
+
+    for g in guardrails:
+        block_pct = Text(f"{g.block_rate:.1f}%" if g.block_rate is not None else "—",
+                         style="red" if (g.block_rate or 0) > 20 else "")
+        table.add_row(g.step, str(g.total_runs), str(g.blocks), block_pct, fmt_dur(g.avg_ms))
     return table

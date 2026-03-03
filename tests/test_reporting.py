@@ -40,3 +40,11 @@ def test_event_distribution(db, test_db_path):
 def test_event_distribution_empty(db):
     rows = db.event_distribution()
     assert rows == []
+
+
+def test_guardrail_summary_empty_steps(db, monkeypatch):
+    """Empty GUARDRAIL_STEPS should return [], not blow up with invalid SQL."""
+    import hooks_report.config as config
+    monkeypatch.setattr(config, "GUARDRAIL_STEPS", set())
+    rows = db.guardrail_summary()
+    assert rows == []

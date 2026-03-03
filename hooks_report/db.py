@@ -1244,6 +1244,8 @@ ORDER BY (cur_avg - prev_avg) DESC
     # ── export_data() ────────────────────────────────────────────────────────
 
     def guardrail_summary(self, days: int = 7) -> list[GuardrailSummary]:
+        if not config.GUARDRAIL_STEPS:
+            return []
         steps_list = ", ".join(f"'{s}'" for s in config.GUARDRAIL_STEPS)
         rows = self._query(f"""
 SELECT step,

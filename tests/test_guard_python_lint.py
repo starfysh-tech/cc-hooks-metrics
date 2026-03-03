@@ -97,6 +97,15 @@ def test_ruff_internal_error_logs_warning(tmp_path):
     assert "no findings on stdout" in r.stderr
 
 
+def test_empty_stdin_exits_zero():
+    r = subprocess.run(
+        [sys.executable, SCRIPT],
+        input="", capture_output=True, text=True,
+    )
+    assert r.returncode == 0
+    assert "empty stdin" in r.stderr
+
+
 # --- Null tool_input (T2) ---
 
 def test_tool_input_null():

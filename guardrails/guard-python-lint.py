@@ -52,7 +52,8 @@ def main():
         )
         sys.exit(2)
     elif result.returncode != 0:
-        print(f"guard-python-lint: ruff exited {result.returncode} with no findings on stdout, check skipped", file=sys.stderr)
+        stderr_info = f" (stderr: {result.stderr.strip()})" if result.stderr.strip() else ""
+        print(f"guard-python-lint: ruff exited {result.returncode} with no findings on stdout{stderr_info}, check skipped", file=sys.stderr)
 
     sys.exit(0)
 

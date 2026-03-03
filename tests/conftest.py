@@ -23,11 +23,11 @@ def test_db_path():
             session TEXT DEFAULT ''
         );
         CREATE TABLE audit_events (
-            id INTEGER PRIMARY KEY,
-            ts TEXT DEFAULT (datetime('now')),
-            tool_name TEXT,
-            tool_input TEXT DEFAULT '',
-            session_id TEXT DEFAULT ''
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts TEXT NOT NULL DEFAULT (datetime('now')),
+            session TEXT NOT NULL DEFAULT '',
+            tool TEXT NOT NULL DEFAULT '',
+            input TEXT NOT NULL DEFAULT ''
         );
     """)
     conn.close()

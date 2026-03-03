@@ -370,6 +370,8 @@ GROUP BY step
             "SELECT COALESCE(SUM(duration_ms),0) FROM hook_metrics "
             "WHERE ts > datetime('now','-1 day')"
         )
+        # aggregate without GROUP BY always returns exactly one row
+        assert row is not None
         overhead_24h_ms = _int(row[0])
 
         # Query 4: 7d runs and overhead
@@ -377,6 +379,8 @@ GROUP BY step
             "SELECT COUNT(*), COALESCE(SUM(duration_ms),0) FROM hook_metrics "
             "WHERE ts > datetime('now','-7 days')"
         )
+        # aggregate without GROUP BY always returns exactly one row
+        assert row is not None
         runs_7d = _int(row[0])
         overhead_7d_ms = _int(row[1])
 
@@ -447,7 +451,8 @@ SELECT
 FROM hook_metrics
 WHERE ts > datetime('now','-14 days')
 """)
-
+        # aggregate without GROUP BY always returns exactly one row
+        assert row is not None
         return WowSummary(
             cur_runs=_int(row[0]),
             prev_runs=_int(row[1]),
@@ -713,6 +718,8 @@ SELECT
 FROM hook_metrics
 WHERE ts > datetime('now', '-1 day')
 """)
+        # aggregate without GROUP BY always returns exactly one row
+        assert row is not None
         return HealthSummary(
             total=_int(row[0]),
             failures=_int(row[1]),
@@ -1099,6 +1106,8 @@ SELECT
   ROUND(1.0 * COUNT(*) / NULLIF(COUNT(DISTINCT session), 0), 1) AS avg_per_session
 FROM audit_events WHERE ts > datetime('now','-7 days')
 """)
+        # aggregate without GROUP BY always returns exactly one row
+        assert row is not None
         return (_int(row[0]), _int(row[1]), float(row[2] or 0))
 
     def most_edited_files(self) -> list[tuple[str, int]]:
@@ -1133,12 +1142,16 @@ GROUP BY category ORDER BY count DESC LIMIT 15
         row = self._query_one(
             "SELECT COUNT(*) FROM hook_metrics WHERE duration_ms = 0 AND real_s = 0"
         )
+        # aggregate without GROUP BY always returns exactly one row
+        assert row is not None
         return _int(row[0])
 
     def unknown_hook_count(self) -> int:
         row = self._query_one(
             "SELECT COUNT(*) FROM hook_metrics WHERE hook = '' OR hook IS NULL"
         )
+        # aggregate without GROUP BY always returns exactly one row
+        assert row is not None
         return _int(row[0])
 
     def duplicate_rows(self) -> list[tuple[str, int, str, int]]:
@@ -1293,7 +1306,7 @@ SELECT
 FROM hook_metrics WHERE ts > datetime('now','-14 days')
 """)
 
-        # SUM without GROUP BY always returns exactly one row (NULLs if empty)
+        # aggregate without GROUP BY always returns exactly one row
         assert row is not None
         cur_runs = _int(row[0])
         prev_runs = _int(row[1])

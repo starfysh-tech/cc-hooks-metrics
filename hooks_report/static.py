@@ -53,22 +53,23 @@ def render_static(db: HooksDB, verbose: bool = False) -> None:
     try:
         section_guardrails(console, db)
     except HooksDBError as e:
-        console.print(Text(f"  Error: {e}", style="red"))
+        console.print(Text(f"  Guardrails — Error: {e}", style="red"))
 
     if verbose:
-        for _fn in [
-            lambda: section_perf_compact(console, db, summary),
-            lambda: section_step_reliability(console, db),
-            lambda: section_repo_dashboard(console, db),
-            lambda: section_sessions_compact(console, db),
-            lambda: section_projects_compact(console, db),
-            lambda: section_advisor(console, db),
-            lambda: section_event_distribution(console, db),
-        ]:
+        verbose_sections = [
+            ("Performance", lambda: section_perf_compact(console, db, summary)),
+            ("Step Reliability", lambda: section_step_reliability(console, db)),
+            ("Repo Dashboard", lambda: section_repo_dashboard(console, db)),
+            ("Sessions", lambda: section_sessions_compact(console, db)),
+            ("Projects", lambda: section_projects_compact(console, db)),
+            ("Advisor", lambda: section_advisor(console, db)),
+            ("Event Distribution", lambda: section_event_distribution(console, db)),
+        ]
+        for name, _fn in verbose_sections:
             try:
                 _fn()
             except HooksDBError as e:
-                console.print(Text(f"  Error: {e}", style="red"))
+                console.print(Text(f"  {name} — Error: {e}", style="red"))
 
     # Closing border
     console.print()
@@ -377,7 +378,7 @@ def section_event_distribution(console: Console, db: HooksDB) -> None:
     console.print(Text("  Event Distribution (last 7d)", style="bold"))
     console.print()
     for event, count in dist:
-        console.print(f"  {event:<24} {count:>6}")
+        console.print(Text(f"  {event:<24} {count:>6}"))
     console.print()
 
 

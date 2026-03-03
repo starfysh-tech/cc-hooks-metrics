@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """PostToolUse guardrail: runs ruff check after Write/Edit on .py files."""
 import json
+import os
 import subprocess
 import sys
 
@@ -21,7 +22,6 @@ def main():
     if tool_name not in APPLICABLE_TOOLS:
         sys.exit(0)
 
-    import os
     file_path = payload.get("tool_input", {}).get("file_path", "")
     if not file_path.endswith(".py"):
         sys.exit(0)

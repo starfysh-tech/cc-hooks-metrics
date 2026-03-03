@@ -609,19 +609,24 @@ GROUP BY repo ORDER BY SUM(duration_ms) DESC LIMIT 5
 
     def broken_hooks(self) -> list[BrokenHook]:
         rows = self._query("""
-SELECT step,
-  COALESCE(NULLIF(TRIM(cmd),''), '(unknown)') AS cmd,
-  COUNT(*) AS cnt,
-  MAX(ts) AS last_fail,
-  (SELECT MAX(ts) FROM hook_metrics h2
-   WHERE h2.step = hook_metrics.step
-   AND h2.exit_code != 127
-   AND h2.ts > datetime('now', '-7 days')) AS last_success
-FROM hook_metrics
-WHERE exit_code = 127 AND ts > datetime('now', '-7 days')
-GROUP BY step, cmd
-ORDER BY cnt DESC
-LIMIT 5
+WITH fails AS (
+  SELECT step,
+    COALESCE(NULLIF(TRIM(cmd),''), '(unknown)') AS cmd,
+    COUNT(*) AS cnt,
+    strftime('%Y-%m-%d', MAX(ts)) AS last_fail
+  FROM hook_metrics
+  WHERE exit_code = 127 AND ts > datetime('now', '-7 days')
+  GROUP BY step, cmd
+  ORDER BY cnt DESC LIMIT 5
+),
+successes AS (
+  SELECT step, strftime('%Y-%m-%d', MAX(ts)) AS last_success
+  FROM hook_metrics
+  WHERE exit_code != 127 AND ts > datetime('now', '-7 days')
+  GROUP BY step
+)
+SELECT f.step, f.cmd, f.cnt, f.last_fail, s.last_success
+FROM fails f LEFT JOIN successes s ON s.step = f.step
 """)
 
         return [
@@ -656,17 +661,18 @@ GROUP BY step
 
         # Broken hooks
         for bh in self.broken_hooks():
+            fix = f"Verify {bh.cmd} exists at configured path"
             if bh.last_success and bh.last_success > bh.last_fail:
                 items.append(ActionItem(
                     category="BROKEN", severity="yellow", step=bh.step,
-                    detail=f"{bh.step} — {bh.count} exit-127 (resolved — passing since {bh.last_success[:10]})",
-                    fix=f"Verify {bh.cmd} exists at configured path",
+                    detail=f"{bh.step} — {bh.count} exit-127 (resolved — passing since {bh.last_success})",
+                    fix=fix,
                 ))
             else:
                 items.append(ActionItem(
                     category="BROKEN", severity="red", step=bh.step,
                     detail=f"{bh.step} — {bh.count} exit-127 (script path missing)",
-                    fix=f"Verify {bh.cmd} exists at configured path",
+                    fix=fix,
                 ))
 
         # Latency regressions

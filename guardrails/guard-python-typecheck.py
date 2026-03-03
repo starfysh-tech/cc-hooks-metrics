@@ -36,7 +36,6 @@ def main():
             capture_output=True, text=True, timeout=25,
         )
     except FileNotFoundError:
-        print("guard-python-typecheck: ty not found — install with: brew install ty  OR  uv tool install ty  OR  cargo install ty", file=sys.stderr)
         sys.exit(0)
     except subprocess.TimeoutExpired:
         print(f"guard-python-typecheck: ty timed out after 25s on {file_path}, check skipped", file=sys.stderr)

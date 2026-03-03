@@ -100,7 +100,7 @@ class BrokenHook:
     cmd: str
     count: int
     last_fail: str
-    last_success: str | None
+    last_success: Optional[str]
 
 
 @dataclass
@@ -622,7 +622,7 @@ WITH fails AS (
 successes AS (
   SELECT step, strftime('%Y-%m-%d', MAX(ts)) AS last_success
   FROM hook_metrics
-  WHERE exit_code != 127 AND ts > datetime('now', '-7 days')
+  WHERE exit_code = 0 AND ts > datetime('now', '-7 days')
   GROUP BY step
 )
 SELECT f.step, f.cmd, f.cnt, f.last_fail, s.last_success

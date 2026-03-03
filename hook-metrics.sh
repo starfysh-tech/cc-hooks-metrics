@@ -17,9 +17,13 @@ repo=$(git rev-parse --show-toplevel 2>/dev/null | tr -d '`$\n\r' || echo "")
 
 # Resolve relative script path against git repo root
 _script="$1"
-if [[ "$_script" != /* ]] && [[ -n "$repo" ]] && [[ -x "$repo/$_script" ]]; then
-  shift
-  set -- "$repo/$_script" "$@"
+if [[ "$_script" != /* ]]; then
+  if [[ -n "$repo" ]] && [[ -x "$repo/$_script" ]]; then
+    shift
+    set -- "$repo/$_script" "$@"
+  elif [[ "$_script" == */* ]]; then
+    echo "warn: hook-metrics: relative path '$_script' not resolved against '$repo', running as-is" >&2
+  fi
 fi
 
 # Reconstruct command string for logging AFTER resolution so cmd column logs resolved path

@@ -54,3 +54,29 @@ def seed_hook_metrics(db_path, rows):
         )
     conn.commit()
     conn.close()
+
+
+def seed_hook_metrics_ext(db_path, rows):
+    """Insert rows into hook_metrics with optional ts and cmd.
+
+    Each row is a dict with keys: hook, step, duration_ms, exit_code, repo, session,
+    and optional: cmd (default ''), ts (default omitted, uses SQLite now()).
+    """
+    conn = sqlite3.connect(db_path)
+    for r in rows:
+        if "ts" in r:
+            conn.execute(
+                "INSERT INTO hook_metrics (hook, step, duration_ms, exit_code, repo, session, cmd, ts)"
+                " VALUES (?,?,?,?,?,?,?,?)",
+                (r["hook"], r["step"], r["duration_ms"], r["exit_code"],
+                 r["repo"], r["session"], r.get("cmd", ""), r["ts"]),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO hook_metrics (hook, step, duration_ms, exit_code, repo, session, cmd)"
+                " VALUES (?,?,?,?,?,?,?)",
+                (r["hook"], r["step"], r["duration_ms"], r["exit_code"],
+                 r["repo"], r["session"], r.get("cmd", "")),
+            )
+    conn.commit()
+    conn.close()

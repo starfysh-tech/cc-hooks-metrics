@@ -56,8 +56,8 @@ else
   warn "jq not found (optional — session ID capture in hook-metrics.sh will use fallback)"
 fi
 
-if ty --version &>/dev/null; then
-  ok "ty ($(ty --version 2>&1))"
+if ty_ver=$(ty --version 2>&1); then
+  ok "ty ($ty_ver)"
 else
   warn "ty not found (optional — guard-python-typecheck will be disabled)"
   warn "  Install: brew install ty  OR  uv tool install ty  OR  cargo install ty"

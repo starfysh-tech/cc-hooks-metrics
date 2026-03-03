@@ -25,7 +25,7 @@ SAFE_BASH_PATTERNS = [
     r"^node\s+--version$",
 ]
 
-CHAINING_CHARS = re.compile(r"[;|&`]|\$\(")
+CHAINING_CHARS = re.compile(r"[;|&`>]|\$\(")
 ALLOW_OUTPUT = json.dumps({
     "hookSpecificOutput": {
         "hookEventName": "PermissionRequest",

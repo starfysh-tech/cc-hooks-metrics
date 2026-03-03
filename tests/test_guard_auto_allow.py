@@ -108,3 +108,14 @@ def test_malformed_json():
     assert r.returncode == 0
     assert r.stdout.strip() == ""
     assert "malformed JSON" in r.stderr
+
+def test_redirect_bash_falls_through():
+    """Commands with > should fall through to user prompt, not be auto-allowed."""
+    r = _run({"tool_name": "Bash", "tool_input": {"command": "ls > /tmp/out"}})
+    assert r.returncode == 0
+    assert r.stdout.strip() == ""
+
+def test_head_redirect_falls_through():
+    r = _run({"tool_name": "Bash", "tool_input": {"command": "head foo > /tmp/out"}})
+    assert r.returncode == 0
+    assert r.stdout.strip() == ""

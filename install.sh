@@ -75,7 +75,7 @@ else
   python3 -c "import ensurepip" 2>/dev/null \
     || fail "ensurepip unavailable — Fix: brew install python@3.12"
   python3 -m venv "$VENV" || fail "Failed to create venv at $VENV"
-  "$VENV/bin/pip" install --quiet "textual>=8.0,<9.0" "rich>=14.0" \
+  "$VENV/bin/pip" install --quiet "$REPO_ROOT" \
     || fail "pip install failed — check your network connection"
   "$VENV/bin/python3" -c "import textual, rich" \
     || fail "Import check failed after install — venv may be corrupted"

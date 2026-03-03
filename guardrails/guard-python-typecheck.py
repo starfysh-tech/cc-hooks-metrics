@@ -42,7 +42,9 @@ def main():
         sys.exit(0)
 
     if result.returncode != 0 and result.stdout.strip():
-        output = result.stdout[:500]
+        output = result.stdout
+        if len(output) > 500:
+            output = output[:500] + "\n... (truncated, run `ty check` for full output)"
         print(
             f"ACTION REQUIRED: Use the Edit tool to fix these type errors in {file_path}:\n{output}",
             file=sys.stderr,

@@ -292,15 +292,6 @@ def build_step_reliability_table(steps: list[StepReliability]) -> Table:
     return table
 
 
-def guardrail_traffic_light(block_rate: float) -> tuple[str, str]:
-    """Green <5% block rate, yellow 5-20%, red >20%."""
-    if block_rate > 20:
-        return "❌", f"{block_rate:.1f}% block rate"
-    elif block_rate >= 5:
-        return "⚠️", f"{block_rate:.1f}% block rate"
-    return "✅", ""
-
-
 def build_guardrail_table(guardrails: list[GuardrailSummary]) -> Table:
     """Table for guardrail summary: step | runs | blocks | block% | avg."""
     table = Table(box=None, padding=(0, 1), show_header=True, header_style="bold")

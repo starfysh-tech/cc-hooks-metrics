@@ -224,6 +224,11 @@ def section_wow_compact(console: Console, db: HooksDB, verbose: bool = False) ->
             line.append(f"  {r.cur_f:4d} fail  (was {r.prev_f}, ")
             line.append_text(render.pct_change(r.cur_f, r.prev_f, "lower_better"))
             line.append(")")
+            reasons = db.top_failure_reasons(r.step)
+            if reasons and reasons[0].snippet:
+                top = reasons[0]
+                code_label = config.EXIT_CODE_LABELS.get(top.exit_code or 0, f"exit {top.exit_code}")
+                line.append(f'  top: {code_label} "{top.snippet[:50]}" \u00d7{top.count}', style="dim")
             console.print(line)
 
         for r in shown_improvements:
@@ -260,6 +265,14 @@ def section_wow_compact(console: Console, db: HooksDB, verbose: bool = False) ->
             line.append_text(render.trend_badge("NEW"))
             line.append(f"  {g.step:<22}  — new ({g.cur_r} runs)")
             console.print(line)
+
+    # Missing expected steps (steps in STEP_TIMEOUTS not seen in last 7d)
+    missing_steps = db.missing_expected_steps()
+    for step in missing_steps:
+        line = Text()
+        line.append_text(render.trend_badge("MISSING"))
+        line.append(f"  {step:<22}  — no runs in 7d (expected)")
+        console.print(line)
 
     console.print()
 

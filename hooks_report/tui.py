@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from rich import box
 from rich.table import Table
 from rich.text import Text
 from textual.app import App, ComposeResult
@@ -231,6 +232,8 @@ class StepDrillScreen(Screen):
             yield Static(id="repo-table")
             yield Static(id="guardrail-header")
             yield Static(id="guardrail-table")
+            yield Static(id="failure-reasons-header")
+            yield Static(id="failure-reasons-table")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -269,6 +272,35 @@ class StepDrillScreen(Screen):
         except HooksDBError as e:
             self.query_one("#guardrail-header", Static).update(
                 Text(f"\n  Guardrails — DB error: {e}", style="red")
+            )
+        try:
+            failing_steps = [
+                row[0] for row in db._query(
+                    "SELECT DISTINCT step FROM hook_metrics "
+                    "WHERE exit_code != 0 AND ts > datetime('now', '-7 days') "
+                    "ORDER BY step"
+                )
+            ]
+            if failing_steps:
+                self.query_one("#failure-reasons-header", Static).update(
+                    Text("\n  Top Failure Reasons (last 7d)", style="bold")
+                )
+                table = Table(box=box.SIMPLE, padding=(0, 1))
+                table.add_column("Step", style="cyan", no_wrap=True)
+                table.add_column("Exit", justify="right")
+                table.add_column("Count", justify="right")
+                table.add_column("Most Common Error", style="dim")
+                for step in failing_steps:
+                    reasons = db.top_failure_reasons(step, limit=1)
+                    if reasons:
+                        r = reasons[0]
+                        code_label = config.EXIT_CODE_LABELS.get(r.exit_code or 0, str(r.exit_code))
+                        snippet = r.snippet[:60] if r.snippet else "(no stderr)"
+                        table.add_row(step, code_label, str(r.count), snippet)
+                self.query_one("#failure-reasons-table", Static).update(table)
+        except HooksDBError as e:
+            self.query_one("#failure-reasons-header", Static).update(
+                Text(f"\n  Top Failure Reasons — DB error: {e}", style="red")
             )
 
 

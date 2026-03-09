@@ -149,3 +149,108 @@ def test_broken_hook_yellow_resolved(db, test_db_path):
     broken = [i for i in items if i.category == "BROKEN" and i.step == "broken-step"]
     assert len(broken) == 1
     assert broken[0].severity == "yellow"
+
+
+# ── Task 4: top_failure_reasons() ────────────────────────────────────────────
+
+
+def test_top_failure_reasons_returns_most_common(db, test_db_path):
+    seed_hook_metrics_ext(test_db_path, [
+        {"hook": "PostToolUse", "step": "audit-logger", "duration_ms": 50,
+         "exit_code": 5, "repo": "r1", "session": "s1", "stderr_snippet": "jq: parse error"},
+        {"hook": "PostToolUse", "step": "audit-logger", "duration_ms": 50,
+         "exit_code": 5, "repo": "r2", "session": "s2", "stderr_snippet": "jq: parse error"},
+        {"hook": "PostToolUse", "step": "audit-logger", "duration_ms": 50,
+         "exit_code": 1, "repo": "r3", "session": "s3", "stderr_snippet": "db locked"},
+    ])
+    reasons = db.top_failure_reasons("audit-logger")
+    assert len(reasons) >= 1
+    assert reasons[0].snippet == "jq: parse error"
+    assert reasons[0].count == 2
+    assert reasons[0].exit_code == 5
+
+
+def test_top_failure_reasons_excludes_exit0(db, test_db_path):
+    seed_hook_metrics_ext(test_db_path, [
+        {"hook": "PostToolUse", "step": "audit-logger", "duration_ms": 50,
+         "exit_code": 0, "repo": "r1", "session": "s1", "stderr_snippet": "should not appear"},
+    ])
+    reasons = db.top_failure_reasons("audit-logger")
+    assert reasons == []
+
+
+def test_top_failure_reasons_empty_snippet_grouped(db, test_db_path):
+    """Empty stderr_snippet on non-zero exit returns entry with empty string."""
+    seed_hook_metrics_ext(test_db_path, [
+        {"hook": "PostToolUse", "step": "audit-logger", "duration_ms": 50,
+         "exit_code": 5, "repo": "r1", "session": "s1", "stderr_snippet": ""},
+        {"hook": "PostToolUse", "step": "audit-logger", "duration_ms": 50,
+         "exit_code": 5, "repo": "r2", "session": "s2", "stderr_snippet": ""},
+    ])
+    reasons = db.top_failure_reasons("audit-logger")
+    assert len(reasons) == 1
+    assert reasons[0].snippet == ""
+    assert reasons[0].count == 2
+
+
+def test_top_failure_reasons_old_db_returns_empty(old_db, old_db_path):
+    """top_failure_reasons() must return [] on old DB missing stderr_snippet column."""
+    import sqlite3
+    with sqlite3.connect(old_db_path) as conn:
+        conn.execute(
+            "INSERT INTO hook_metrics (ts, hook, step, exit_code, duration_ms) "
+            "VALUES (datetime('now'), 'PostToolUse', 'guard-python-lint', 1, 100)"
+        )
+        conn.commit()
+    reasons = old_db.top_failure_reasons("guard-python-lint")
+    assert reasons == []
+
+
+# ── Task 5: missing_expected_steps() ─────────────────────────────────────────
+
+
+def test_missing_expected_steps_returns_absent_steps(db, test_db_path, monkeypatch):
+    import hooks_report.config as cfg
+    monkeypatch.setattr(cfg, "EXPECTED_STEPS", {"audit-logger", "guard-security", "phi-check"})
+    seed_hook_metrics(test_db_path, [
+        ("PostToolUse", "audit-logger", 50, 0, "r1", "s1"),
+    ])
+    missing = db.missing_expected_steps(days=7)
+    assert "guard-security" in missing
+    assert "phi-check" in missing
+    assert "audit-logger" not in missing
+
+
+def test_missing_expected_steps_empty_when_all_present(db, test_db_path, monkeypatch):
+    import hooks_report.config as cfg
+    monkeypatch.setattr(cfg, "EXPECTED_STEPS", {"audit-logger"})
+    seed_hook_metrics(test_db_path, [
+        ("PostToolUse", "audit-logger", 50, 0, "r1", "s1"),
+    ])
+    assert db.missing_expected_steps(days=7) == []
+
+
+# ── Task 6: action_items() enrichment ────────────────────────────────────────
+
+
+def test_action_items_fail_includes_top_error(db, test_db_path):
+    """FAIL action items include top_error when stderr_snippet is populated."""
+    seed_hook_metrics_ext(test_db_path, [
+        {"hook": "PostToolUse", "step": "audit-logger", "duration_ms": 50,
+         "exit_code": 5, "repo": "r1", "session": "s1", "stderr_snippet": "jq: parse error"},
+        {"hook": "PostToolUse", "step": "audit-logger", "duration_ms": 50,
+         "exit_code": 5, "repo": "r2", "session": "s2", "stderr_snippet": "jq: parse error"},
+    ])
+    items = db.action_items()
+    fail_items = [i for i in items if i.category == "FAIL" and i.step == "audit-logger"]
+    assert len(fail_items) == 1
+    assert "jq: parse error" in fail_items[0].detail
+
+
+def test_action_items_missing_step_appears(db, monkeypatch):
+    """MISSING action items appear for EXPECTED_STEPS with no runs."""
+    import hooks_report.config as cfg
+    monkeypatch.setattr(cfg, "EXPECTED_STEPS", {"never-ran-step"})
+    items = db.action_items()
+    missing = [i for i in items if i.category == "MISSING"]
+    assert any(i.step == "never-ran-step" for i in missing)

@@ -105,11 +105,18 @@ class BrokenHook:
 
 @dataclass
 class ActionItem:
-    category: str   # TIMEOUT, BROKEN, SLOW, FAIL
+    category: str   # TIMEOUT, BROKEN, SLOW, FAIL, MISSING
     severity: str   # red, yellow
     step: str
     detail: str
     fix: str
+
+
+@dataclass
+class FailureReason:
+    snippet: str
+    count: int
+    exit_code: int
 
 
 @dataclass
@@ -580,6 +587,60 @@ HAVING (cur_r = 0 AND prev_r >= 5) OR (prev_r = 0 AND cur_r >= 5)
             if not re.fullmatch(config.SKIP_HOOKS_PATTERN, step)
         ]
 
+    # ── top_failure_reasons() ─────────────────────────────────────────────────
+
+    def top_failure_reasons(self, step: str, days: int = 7, limit: int = 5) -> list[FailureReason]:
+        """Most common stderr_snippet values for a step on non-zero exits."""
+        if not self._has_stderr_snippet_column():
+            return []
+        rows = self._query("""
+SELECT stderr_snippet, COUNT(*) AS cnt, exit_code
+FROM hook_metrics
+WHERE step = ? AND exit_code != 0 AND ts > datetime('now', ? || ' days')
+GROUP BY stderr_snippet, exit_code
+ORDER BY cnt DESC
+LIMIT ?
+""", (step, f"-{days}", limit))
+        return [FailureReason(snippet=str(s or ""), count=_int(c), exit_code=_int(ec))
+                for s, c, ec in rows]
+
+    # ── failing_steps_7d() ────────────────────────────────────────────────────
+
+    def failing_steps_7d(self) -> list[str]:
+        """Return steps with non-zero exits in the last 7 days, excluding semantic exit steps."""
+        semantic = config.SEMANTIC_EXIT_STEPS
+        if not semantic:
+            extra = ""
+            params: tuple = ()
+        else:
+            placeholders = ",".join("?" * len(semantic))
+            extra = f" AND step NOT IN ({placeholders})"
+            params = tuple(semantic)
+        rows = self._query(
+            "SELECT DISTINCT step FROM hook_metrics "
+            f"WHERE exit_code != 0 AND ts > datetime('now', '-7 days'){extra} "
+            "ORDER BY step",
+            params,
+        )
+        return [row[0] for row in rows]
+
+    # ── missing_expected_steps() ──────────────────────────────────────────────
+
+    def missing_expected_steps(self, days: int = 7) -> list[str]:
+        """Return EXPECTED_STEPS not seen in hook_metrics within the window."""
+        seen = {
+            row[0]
+            for row in self._query(
+                "SELECT DISTINCT step FROM hook_metrics WHERE ts > datetime('now', ? || ' days')",
+                (f"-{days}",),
+            )
+        }
+        skip = config.SKIP_HOOKS_PATTERN
+        return sorted(
+            s for s in config.EXPECTED_STEPS
+            if s not in seen and not re.fullmatch(skip, s)
+        )
+
     # ── projects_compact() ───────────────────────────────────────────────────
 
     def projects_compact(self) -> list[ProjectOverhead]:
@@ -723,10 +784,24 @@ LIMIT 5
         for step, count in fail_rows:
             cnt = _int(count)
             word = "failure" if cnt == 1 else "failures"
+            reasons = self.top_failure_reasons(step)
+            top_error = ""
+            if reasons and reasons[0].snippet:
+                r = reasons[0]
+                code_label = config.EXIT_CODE_LABELS.get(r.exit_code, f"exit {r.exit_code}")
+                top_error = f" [{code_label}: \"{r.snippet[:60]}\" \u00d7{r.count}]"
             items.append(ActionItem(
                 category="FAIL", severity="red", step=step,
-                detail=f"{step} — {cnt} {word} (24h)",
+                detail=f"{step} — {cnt} {word} (24h){top_error}",
                 fix="Investigate hook failures",
+            ))
+
+        # Missing expected steps
+        for step in self.missing_expected_steps():
+            items.append(ActionItem(
+                category="MISSING", severity="yellow", step=step,
+                detail=f"{step} — no runs in 7d (expected)",
+                fix="Verify hook is wired in settings.json",
             ))
 
         return items
@@ -1474,34 +1549,46 @@ HAVING (cur_r = 0 AND prev_r >= 5) OR (prev_r = 0 AND cur_r >= 5)
 
     # ── Span export ───────────────────────────────────────────────────────────
 
-    def _has_session_column(self) -> bool:
-        """Check whether hook_metrics has the session column (added in Phase 1)."""
-        if hasattr(self, "_session_col_cached"):
-            return self._session_col_cached
+    def _has_column(self, column: str) -> bool:
+        """Check whether hook_metrics has the given column (cached per column name)."""
+        cache_key = f"_col_cached_{column}"
+        if hasattr(self, cache_key):
+            return getattr(self, cache_key)
         rows = self._query("PRAGMA table_info(hook_metrics)")
-        self._session_col_cached = any(r[1] == "session" for r in rows)
-        return self._session_col_cached
+        result = any(r[1] == column for r in rows)
+        setattr(self, cache_key, result)
+        return result
+
+    def _has_session_column(self) -> bool:
+        return self._has_column("session")
+
+    def _has_stderr_snippet_column(self) -> bool:
+        return self._has_column("stderr_snippet")
 
     def spans_raw(self, hours: int = 24, limit: int = 10000) -> list[tuple]:
         """Return hook_metrics rows for span export.
 
-        Gracefully degrades on old DBs without the session column — pads empty string.
+        Gracefully degrades on old DBs without the session or stderr_snippet column.
         Row order: id, ts, hook, step, cmd, exit_code, duration_ms,
-                   real_s, user_s, sys_s, branch, sha, host, repo, session
+                   real_s, user_s, sys_s, branch, sha, host, repo, session, stderr_snippet
         """
         has_session = self._has_session_column()
+        has_stderr = self._has_stderr_snippet_column()
         col_sel = (
             "id, ts, hook, step, cmd, exit_code, duration_ms, "
             "real_s, user_s, sys_s, branch, sha, host, repo"
             + (", session" if has_session else "")
+            + (", stderr_snippet" if has_stderr else "")
         )
         rows = self._query(
             f"SELECT {col_sel} FROM hook_metrics "
             "WHERE ts > datetime('now', ?) ORDER BY ts LIMIT ?",
             (f"-{hours} hours", limit),
         )
-        if not has_session:
-            return [r + ("",) for r in rows]
+        if not has_session:  # implies not has_stderr (stderr added after session)
+            rows = [r + ("", "") for r in rows]
+        elif not has_stderr:
+            rows = [r + ("",) for r in rows]
         return rows
 
     def audit_spans_raw(self, hours: int = 24, limit: int = 10000) -> list[tuple]:

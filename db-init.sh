@@ -18,6 +18,8 @@ ALTER TABLE hook_metrics ADD COLUMN session TEXT DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_hook_metrics_session ON hook_metrics(session) WHERE session != '';
 SQL
     fi
+    # Migrate existing DB: add stderr_snippet column if missing
+    sqlite3 "$HOOKS_DB" "ALTER TABLE hook_metrics ADD COLUMN stderr_snippet TEXT DEFAULT ''" 2>/dev/null || true
     return 0
   fi
 
@@ -45,7 +47,8 @@ CREATE TABLE IF NOT EXISTS hook_metrics (
     sha         TEXT DEFAULT '',
     host        TEXT DEFAULT '',
     repo        TEXT DEFAULT '',
-    session     TEXT DEFAULT ''
+    session     TEXT DEFAULT '',
+    stderr_snippet TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_hook_metrics_session
   ON hook_metrics(session) WHERE session != '';

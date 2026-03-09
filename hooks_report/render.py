@@ -37,6 +37,7 @@ def trend_badge(badge_type: str) -> Text:
         "NEW": ("cyan", "[NEW]"),
         "GONE": ("yellow", "[GONE]"),
         "SLOW": ("red", "[SLOW]"),
+        "MISSING": ("yellow", "[MISSING]"),
     }
     style, label = styles.get(badge_type, ("dim", f"[{badge_type}]"))
     return Text(label, style=style)

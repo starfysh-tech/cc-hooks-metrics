@@ -18,6 +18,17 @@ STEP_TIMEOUTS: dict[str, int] = {  # milliseconds
 }
 SEMANTIC_EXIT_STEPS = {"codex-review"}
 GUARDRAIL_STEPS = {"guard-security", "guard-python-lint", "guard-python-typecheck", "guard-auto-allow"}
+
+# Steps expected to run regularly — used for coverage gap detection
+# Derived from STEP_TIMEOUTS so there's only one list to maintain
+EXPECTED_STEPS: set[str] = set(STEP_TIMEOUTS.keys())
+
+EXIT_CODE_LABELS: dict[int, str] = {
+    127: "binary not found",
+    124: "timeout",
+    141: "SIGPIPE",
+    2: "guardrail block",
+}
 SKIP_HOOKS_PATTERN = re.compile(r"^(fake-fail|ok-step|echo|test-hook|main|event-log)$")
 
 IMPACT_THRESHOLD_S = 30

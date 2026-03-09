@@ -36,15 +36,25 @@ cat > "$input_file"
 # Temp file for timing data
 time_file=$(mktemp)
 
+# Temp file for stderr capture
+stderr_file=$(mktemp)
+
 # Clean up temp files on exit (handles errors and normal exit)
-trap 'rm -f "$input_file" "$time_file"' EXIT
+trap 'rm -f "$input_file" "$time_file" "$stderr_file"' EXIT
 
 # Run command with timing (-p for parseable output: "real X.XX\nuser X.XX\nsys X.XX")
 # Disable set -e so non-zero exit codes don't abort the script before we log them
 set +e
-/usr/bin/time -p -o "$time_file" "$@" < "$input_file"
+/usr/bin/time -p -o "$time_file" "$@" < "$input_file" 2> >(tee "$stderr_file" >&2)
 exit_code=$?
+wait  # drain tee subshell before reading $stderr_file
 set -e
+
+# Capture stderr snippet only on failure (empty string on success = no overhead)
+stderr_snippet=""
+if [ "$exit_code" -ne 0 ]; then
+  stderr_snippet=$(head -c 200 "$stderr_file" | tr '\n\r\t' '   ' | tr -d '`$')
+fi
 
 # Parse timing data
 real=$(grep "^real" "$time_file" | awk '{print $2}')
@@ -69,7 +79,7 @@ ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 sqlite3 "$HOOKS_DB" >/dev/null <<SQL || echo "warn: hook-metrics: sqlite3 insert failed" >&2
 PRAGMA busy_timeout=1000;
-INSERT INTO hook_metrics (ts, hook, step, cmd, exit_code, duration_ms, real_s, user_s, sys_s, branch, sha, host, repo, session)
+INSERT INTO hook_metrics (ts, hook, step, cmd, exit_code, duration_ms, real_s, user_s, sys_s, branch, sha, host, repo, session, stderr_snippet)
 VALUES (
   '$(_sql_escape "$ts")',
   '$(_sql_escape "$HOOK_EVENT")',
@@ -84,7 +94,8 @@ VALUES (
   '$(_sql_escape "$sha")',
   '$(_sql_escape "$host")',
   '$(_sql_escape "$repo")',
-  '$(_sql_escape "$SESSION_ID")'
+  '$(_sql_escape "$SESSION_ID")',
+  '$(_sql_escape "$stderr_snippet")'
 );
 SQL
 

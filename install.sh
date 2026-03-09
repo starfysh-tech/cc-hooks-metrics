@@ -68,7 +68,27 @@ if [ "$FORCE" -eq 0 ] && [ -d "$HOOKS_DIR" ]; then
   if [ ! -t 0 ]; then
     fail "~/.claude/hooks/ exists and stdin is not a TTY — re-run with --force"
   fi
-  printf '  ~/.claude/hooks/ already exists. Overwrite? [y/N] '
+  echo ""
+  echo "  Comparing installed hooks to repo..."
+  DIFF_LINES=$(
+    diff -rq \
+      --exclude='.venv' --exclude='*.pyc' --exclude='__pycache__' --exclude='hooks.db' \
+      "$HOOKS_DIR/hooks_report" "$REPO_ROOT/hooks_report" 2>/dev/null || true
+    diff -rq \
+      --exclude='*.pyc' --exclude='__pycache__' \
+      "$HOOKS_DIR/guardrails" "$REPO_ROOT/guardrails" 2>/dev/null || true
+    for s in hook-metrics.sh audit-logger.sh db-init.sh mermaid-lint.sh hooks-report.sh; do
+      [ -f "$HOOKS_DIR/$s" ] && diff -q "$HOOKS_DIR/$s" "$REPO_ROOT/$s" 2>/dev/null || true
+    done
+  )
+  if [ -z "$DIFF_LINES" ]; then
+    ok "Installed hooks match repo — no changes would be made"
+    exit 0
+  else
+    echo "$DIFF_LINES"
+    echo ""
+  fi
+  printf '  Overwrite with repo version? [y/N] '
   read -r REPLY || true
   [[ "${REPLY:-n}" =~ ^[Yy]$ ]] \
     || { echo "Deploy skipped. Re-run with --force to skip this prompt."; exit 0; }

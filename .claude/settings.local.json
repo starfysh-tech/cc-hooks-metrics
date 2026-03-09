@@ -12,7 +12,13 @@
       "Bash(ty:*)",
       "Bash(ls:*)",
       "Bash(head:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(install:*)",
+      "Bash(python:*)",
+      "Bash(echo exit: $?:*)",
+      "Bash(git:*)",
+      "Bash(CLAUDE_HOOKS_DB=~/.claude/hooks.db bash:*)",
+      "Bash(bash:*)"
     ]
   }
 }

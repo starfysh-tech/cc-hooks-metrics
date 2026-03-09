@@ -45,8 +45,9 @@ trap 'rm -f "$input_file" "$time_file" "$stderr_file"' EXIT
 # Run command with timing (-p for parseable output: "real X.XX\nuser X.XX\nsys X.XX")
 # Disable set -e so non-zero exit codes don't abort the script before we log them
 set +e
-/usr/bin/time -p -o "$time_file" "$@" < "$input_file" 2>"$stderr_file"
+/usr/bin/time -p -o "$time_file" "$@" < "$input_file" 2> >(tee "$stderr_file" >&2)
 exit_code=$?
+wait  # drain tee subshell before reading $stderr_file
 set -e
 
 # Capture stderr snippet only on failure (empty string on success = no overhead)

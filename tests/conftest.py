@@ -20,7 +20,8 @@ def test_db_path():
             exit_code INTEGER,
             repo TEXT DEFAULT '',
             cmd TEXT DEFAULT '',
-            session TEXT DEFAULT ''
+            session TEXT DEFAULT '',
+            stderr_snippet TEXT DEFAULT ''
         );
         CREATE TABLE audit_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,17 +67,17 @@ def seed_hook_metrics_ext(db_path, rows):
     for r in rows:
         if "ts" in r:
             conn.execute(
-                "INSERT INTO hook_metrics (hook, step, duration_ms, exit_code, repo, session, cmd, ts)"
-                " VALUES (?,?,?,?,?,?,?,?)",
+                "INSERT INTO hook_metrics (hook, step, duration_ms, exit_code, repo, session, cmd, ts, stderr_snippet)"
+                " VALUES (?,?,?,?,?,?,?,?,?)",
                 (r["hook"], r["step"], r["duration_ms"], r["exit_code"],
-                 r["repo"], r["session"], r.get("cmd", ""), r["ts"]),
+                 r["repo"], r["session"], r.get("cmd", ""), r["ts"], r.get("stderr_snippet", "")),
             )
         else:
             conn.execute(
-                "INSERT INTO hook_metrics (hook, step, duration_ms, exit_code, repo, session, cmd)"
-                " VALUES (?,?,?,?,?,?,?)",
+                "INSERT INTO hook_metrics (hook, step, duration_ms, exit_code, repo, session, cmd, stderr_snippet)"
+                " VALUES (?,?,?,?,?,?,?,?)",
                 (r["hook"], r["step"], r["duration_ms"], r["exit_code"],
-                 r["repo"], r["session"], r.get("cmd", "")),
+                 r["repo"], r["session"], r.get("cmd", ""), r.get("stderr_snippet", "")),
             )
     conn.commit()
     conn.close()

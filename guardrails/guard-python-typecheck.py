@@ -2,6 +2,7 @@
 """PostToolUse guardrail: runs ty check after Write/Edit on .py files."""
 import json
 import os
+import site
 import subprocess
 import sys
 
@@ -32,7 +33,7 @@ def main():
 
     try:
         result = subprocess.run(
-            ["ty", "check", file_path],
+            ["ty", "check", "--extra-search-path", site.getusersitepackages(), file_path],
             capture_output=True, text=True, timeout=25,
         )
     except FileNotFoundError:

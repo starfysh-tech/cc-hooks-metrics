@@ -51,13 +51,9 @@ def main():
 
     project_dir = os.path.dirname(tsconfig)
 
-    # Prefer local tsc from node_modules/.bin; fall back to PATH tsc
-    tsc_local = os.path.join(project_dir, "node_modules", ".bin", "tsc")
-    tsc_cmd = tsc_local if os.path.isfile(tsc_local) else "tsc"
-
     try:
         result = subprocess.run(
-            [tsc_cmd, "--noEmit", "--incremental", "--project", tsconfig],
+            ["tsc", "--noEmit", "--incremental", "--project", tsconfig],
             capture_output=True, text=True, timeout=30, cwd=project_dir,
         )
     except FileNotFoundError:

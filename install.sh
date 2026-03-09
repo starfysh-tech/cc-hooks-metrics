@@ -17,6 +17,7 @@ done
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 HOOKS_DIR="$HOME/.claude/hooks"
 VENV="$HOOKS_DIR/.venv"
+SCRIPTS=(hook-metrics.sh audit-logger.sh db-init.sh mermaid-lint.sh hooks-report.sh)
 
 ok()   { printf '[OK]   %s\n' "$*"; }
 warn() { printf '[WARN] %s\n' "$*"; }
@@ -80,7 +81,7 @@ if [ "$FORCE" -eq 0 ] && [ -d "$HOOKS_DIR" ]; then
           "$HOOKS_DIR/$dir" "$REPO_ROOT/$dir" 2>/dev/null || true
       fi
     done
-    for s in hook-metrics.sh audit-logger.sh db-init.sh mermaid-lint.sh hooks-report.sh; do
+    for s in "${SCRIPTS[@]}"; do
       if [ ! -f "$HOOKS_DIR/$s" ]; then
         echo "Only in $REPO_ROOT: $s"
       else
@@ -127,7 +128,6 @@ fi
 echo ""
 echo "==> Phase 3: Deploy scripts"
 
-SCRIPTS=(hook-metrics.sh audit-logger.sh db-init.sh mermaid-lint.sh hooks-report.sh)
 for s in "${SCRIPTS[@]}"; do
   [ -f "$REPO_ROOT/$s" ] || fail "Missing source script: $s"
 done

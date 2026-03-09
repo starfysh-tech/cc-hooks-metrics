@@ -233,7 +233,7 @@ def test_send_spans_network_error_returns_zero(capsys):
     assert "warn: otlp:" in capsys.readouterr().err
 
 
-def test_send_spans_malformed_rejected_count_returns_total(capsys):
+def test_send_spans_malformed_rejected_count_returns_total():
     """Non-integer rejectedSpans is ignored; full total returned."""
     spans = [_make_span("sess-1", "1111111111111111")]
     mock_resp = _mock_response({"partialSuccess": {"rejectedSpans": "five"}})
@@ -385,3 +385,26 @@ def test_build_otlp_payload_root_span_timing_envelope():
     root = next(s for s in otlp_spans if s["name"] == "session")
     assert root["startTimeUnixNano"] == "1000000000"
     assert root["endTimeUnixNano"] == "5000000000"
+
+
+# ── old-DB degradation ────────────────────────────────────────────────────────
+
+def test_spans_raw_old_db_pads_stderr_snippet(old_db, old_db_path):
+    """spans_raw() on old DB (no stderr_snippet column) must pad with '' not crash."""
+    import sqlite3
+    with sqlite3.connect(old_db_path) as conn:
+        conn.execute(
+            "INSERT INTO hook_metrics "
+            "(ts, hook, step, exit_code, duration_ms, real_s, user_s, sys_s, "
+            "branch, sha, host, repo, session) "
+            "VALUES (datetime('now'), 'PostToolUse', 'audit-logger', 0, 100, "
+            "0.1, 0.0, 0.0, 'main', 'abc1234', 'host', '/repo', 'sess1')"
+        )
+        conn.commit()
+    rows = old_db.spans_raw(hours=24)
+    assert len(rows) == 1
+    row = rows[0]
+    # 16 elements: 14 base + session (present) + stderr_snippet (padded)
+    assert len(row) == 16
+    assert row[14] == "sess1"   # session is present in old_db
+    assert row[15] == ""        # stderr_snippet padded as empty string

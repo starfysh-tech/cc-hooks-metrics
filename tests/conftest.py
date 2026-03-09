@@ -57,6 +57,54 @@ def seed_hook_metrics(db_path, rows):
     conn.close()
 
 
+@pytest.fixture
+def old_db_path(tmp_path):
+    """A DB path with schema that predates the stderr_snippet column."""
+    import sqlite3
+    path = str(tmp_path / "old_hooks.db")
+    with sqlite3.connect(path) as conn:
+        conn.execute("""
+CREATE TABLE IF NOT EXISTS hook_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    hook TEXT NOT NULL,
+    step TEXT NOT NULL,
+    cmd TEXT,
+    exit_code INTEGER,
+    duration_ms INTEGER,
+    real_s REAL,
+    user_s REAL,
+    sys_s REAL,
+    branch TEXT,
+    sha TEXT,
+    host TEXT,
+    repo TEXT,
+    session TEXT
+)
+""")
+        conn.execute("""
+CREATE TABLE IF NOT EXISTS audit_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    session TEXT,
+    tool TEXT,
+    input TEXT,
+    tool_use_id TEXT
+)
+""")
+        conn.commit()
+    return path
+
+
+@pytest.fixture
+def old_db(old_db_path):
+    """HooksDB instance on old schema (no stderr_snippet column)."""
+    from hooks_report.db import HooksDB
+    hdb = HooksDB(old_db_path)
+    yield hdb
+    hdb.close()
+
+
 def seed_hook_metrics_ext(db_path, rows):
     """Insert rows into hook_metrics with optional ts and cmd.
 

@@ -167,6 +167,7 @@ def test_top_failure_reasons_returns_most_common(db, test_db_path):
     assert len(reasons) >= 1
     assert reasons[0].snippet == "jq: parse error"
     assert reasons[0].count == 2
+    assert reasons[0].exit_code == 5
 
 
 def test_top_failure_reasons_excludes_exit0(db, test_db_path):
@@ -190,6 +191,19 @@ def test_top_failure_reasons_empty_snippet_grouped(db, test_db_path):
     assert len(reasons) == 1
     assert reasons[0].snippet == ""
     assert reasons[0].count == 2
+
+
+def test_top_failure_reasons_old_db_returns_empty(old_db, old_db_path):
+    """top_failure_reasons() must return [] on old DB missing stderr_snippet column."""
+    import sqlite3
+    with sqlite3.connect(old_db_path) as conn:
+        conn.execute(
+            "INSERT INTO hook_metrics (ts, hook, step, exit_code, duration_ms) "
+            "VALUES (datetime('now'), 'PostToolUse', 'guard-python-lint', 1, 100)"
+        )
+        conn.commit()
+    reasons = old_db.top_failure_reasons("guard-python-lint")
+    assert reasons == []
 
 
 # ── Task 5: missing_expected_steps() ─────────────────────────────────────────

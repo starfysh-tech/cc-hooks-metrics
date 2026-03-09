@@ -71,14 +71,21 @@ if [ "$FORCE" -eq 0 ] && [ -d "$HOOKS_DIR" ]; then
   echo ""
   echo "  Comparing installed hooks to repo..."
   DIFF_LINES=$(
-    diff -rq \
-      --exclude='.venv' --exclude='*.pyc' --exclude='__pycache__' --exclude='hooks.db' \
-      "$HOOKS_DIR/hooks_report" "$REPO_ROOT/hooks_report" 2>/dev/null || true
-    diff -rq \
-      --exclude='*.pyc' --exclude='__pycache__' \
-      "$HOOKS_DIR/guardrails" "$REPO_ROOT/guardrails" 2>/dev/null || true
+    for dir in hooks_report guardrails; do
+      if [ ! -d "$HOOKS_DIR/$dir" ]; then
+        echo "Only in $REPO_ROOT: $dir"
+      else
+        diff -rq \
+          --exclude='.venv' --exclude='*.pyc' --exclude='__pycache__' --exclude='hooks.db' \
+          "$HOOKS_DIR/$dir" "$REPO_ROOT/$dir" 2>/dev/null || true
+      fi
+    done
     for s in hook-metrics.sh audit-logger.sh db-init.sh mermaid-lint.sh hooks-report.sh; do
-      [ -f "$HOOKS_DIR/$s" ] && diff -q "$HOOKS_DIR/$s" "$REPO_ROOT/$s" 2>/dev/null || true
+      if [ ! -f "$HOOKS_DIR/$s" ]; then
+        echo "Only in $REPO_ROOT: $s"
+      else
+        diff -q "$HOOKS_DIR/$s" "$REPO_ROOT/$s" 2>/dev/null || true
+      fi
     done
   )
   if [ -z "$DIFF_LINES" ]; then

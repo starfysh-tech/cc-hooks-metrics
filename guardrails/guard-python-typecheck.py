@@ -32,8 +32,16 @@ def main():
         sys.exit(0)
 
     try:
+        user_site = site.getusersitepackages()
+    except AttributeError:
+        user_site = ""
+
+    try:
+        cmd = ["ty", "check", file_path]
+        if user_site:
+            cmd = ["ty", "check", "--extra-search-path", user_site, file_path]
         result = subprocess.run(
-            ["ty", "check", "--extra-search-path", site.getusersitepackages(), file_path],
+            cmd,
             capture_output=True, text=True, timeout=25,
         )
     except FileNotFoundError:

@@ -83,7 +83,8 @@ hooks_report/
   render.py         # Rich helpers: fmt_dur, bar_chart, trend_badge, pct_change, traffic_light_grid
   spans.py          # OTel span model: Span dataclass, hook_metric_to_span, audit_event_to_span, spans_to_dict
   static.py         # Rich Console output: compact sections + verbose sections + export_json
-  tui.py            # Textual app: HooksReportApp (dashboard) + DetailScreen + SessionsScreen + StepDrillScreen
+  advisor.py        # Tuning suggestions, hot sequences, periodic summaries
+  tui.py            # Textual app: HooksReportApp (dashboard) + DetailScreen + SessionsScreen + StepDrillScreen + AdvisorScreen
 ```
 
 **hooks-report.sh** is a Python wrapper with venv detection:
@@ -94,8 +95,6 @@ PYTHON="${DIR}/.venv/bin/python3"
 [ -x "$PYTHON" ] || PYTHON=python3
 PYTHONPATH="$DIR" exec "$PYTHON" -m hooks_report "$@"
 ```
-
-**hooks-report-legacy.sh** — original bash (rollback reference).
 
 ### Output structure
 

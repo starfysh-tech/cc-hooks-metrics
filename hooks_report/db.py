@@ -105,11 +105,18 @@ class BrokenHook:
 
 @dataclass
 class ActionItem:
-    category: str   # TIMEOUT, BROKEN, SLOW, FAIL
+    category: str   # TIMEOUT, BROKEN, SLOW, FAIL, MISSING
     severity: str   # red, yellow
     step: str
     detail: str
     fix: str
+
+
+@dataclass
+class FailureReason:
+    snippet: str
+    count: int
+    exit_code: int | None
 
 
 @dataclass
@@ -580,6 +587,38 @@ HAVING (cur_r = 0 AND prev_r >= 5) OR (prev_r = 0 AND cur_r >= 5)
             if not re.fullmatch(config.SKIP_HOOKS_PATTERN, step)
         ]
 
+    # ── top_failure_reasons() ─────────────────────────────────────────────────
+
+    def top_failure_reasons(self, step: str, days: int = 7, limit: int = 5) -> list[FailureReason]:
+        """Most common stderr_snippet values for a step on non-zero exits."""
+        rows = self._query("""
+SELECT stderr_snippet, COUNT(*) AS cnt, exit_code
+FROM hook_metrics
+WHERE step = ? AND exit_code != 0 AND ts > datetime('now', ? || ' days')
+GROUP BY stderr_snippet, exit_code
+ORDER BY cnt DESC
+LIMIT ?
+""", (step, f"-{days}", limit))
+        return [FailureReason(snippet=str(s or ""), count=_int(c), exit_code=_int(ec))
+                for s, c, ec in rows]
+
+    # ── missing_expected_steps() ──────────────────────────────────────────────
+
+    def missing_expected_steps(self, days: int = 7) -> list[str]:
+        """Return EXPECTED_STEPS not seen in hook_metrics within the window."""
+        seen = {
+            row[0]
+            for row in self._query(
+                "SELECT DISTINCT step FROM hook_metrics WHERE ts > datetime('now', ? || ' days')",
+                (f"-{days}",),
+            )
+        }
+        skip = config.SKIP_HOOKS_PATTERN
+        return sorted(
+            s for s in config.EXPECTED_STEPS
+            if s not in seen and not re.fullmatch(skip, s)
+        )
+
     # ── projects_compact() ───────────────────────────────────────────────────
 
     def projects_compact(self) -> list[ProjectOverhead]:
@@ -723,10 +762,24 @@ LIMIT 5
         for step, count in fail_rows:
             cnt = _int(count)
             word = "failure" if cnt == 1 else "failures"
+            reasons = self.top_failure_reasons(step)
+            top_error = ""
+            if reasons and reasons[0].snippet:
+                r = reasons[0]
+                code_label = config.EXIT_CODE_LABELS.get(r.exit_code or 0, f"exit {r.exit_code}")
+                top_error = f" [{code_label}: \"{r.snippet[:60]}\" \u00d7{r.count}]"
             items.append(ActionItem(
                 category="FAIL", severity="red", step=step,
-                detail=f"{step} — {cnt} {word} (24h)",
+                detail=f"{step} — {cnt} {word} (24h){top_error}",
                 fix="Investigate hook failures",
+            ))
+
+        # Missing expected steps
+        for step in self.missing_expected_steps():
+            items.append(ActionItem(
+                category="MISSING", severity="yellow", step=step,
+                detail=f"{step} — no runs in 7d (expected)",
+                fix="Verify hook is wired in settings.json",
             ))
 
         return items

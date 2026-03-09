@@ -227,7 +227,7 @@ def section_wow_compact(console: Console, db: HooksDB, verbose: bool = False) ->
             reasons = db.top_failure_reasons(r.step)
             if reasons and reasons[0].snippet:
                 top = reasons[0]
-                code_label = config.EXIT_CODE_LABELS.get(top.exit_code or 0, f"exit {top.exit_code}")
+                code_label = config.EXIT_CODE_LABELS.get(top.exit_code, f"exit {top.exit_code}")
                 line.append(f'  top: {code_label} "{top.snippet[:50]}" \u00d7{top.count}', style="dim")
             console.print(line)
 

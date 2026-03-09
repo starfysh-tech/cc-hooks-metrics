@@ -274,13 +274,7 @@ class StepDrillScreen(Screen):
                 Text(f"\n  Guardrails — DB error: {e}", style="red")
             )
         try:
-            failing_steps = [
-                row[0] for row in db._query(
-                    "SELECT DISTINCT step FROM hook_metrics "
-                    "WHERE exit_code != 0 AND ts > datetime('now', '-7 days') "
-                    "ORDER BY step"
-                )
-            ]
+            failing_steps = db.failing_steps_7d()
             if failing_steps:
                 self.query_one("#failure-reasons-header", Static).update(
                     Text("\n  Top Failure Reasons (last 7d)", style="bold")
@@ -294,7 +288,7 @@ class StepDrillScreen(Screen):
                     reasons = db.top_failure_reasons(step, limit=1)
                     if reasons:
                         r = reasons[0]
-                        code_label = config.EXIT_CODE_LABELS.get(r.exit_code or 0, str(r.exit_code))
+                        code_label = config.EXIT_CODE_LABELS.get(r.exit_code, str(r.exit_code))
                         snippet = r.snippet[:60] if r.snippet else "(no stderr)"
                         table.add_row(step, code_label, str(r.count), snippet)
                 self.query_one("#failure-reasons-table", Static).update(table)

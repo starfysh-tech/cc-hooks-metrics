@@ -51,20 +51,20 @@ def main():
 
     project_dir = os.path.dirname(tsconfig)
 
-    # Prefer local tsc; fall back to npx only if not found
+    # Prefer local tsc from node_modules/.bin; fall back to PATH tsc
     tsc_local = os.path.join(project_dir, "node_modules", ".bin", "tsc")
     tsc_cmd = tsc_local if os.path.isfile(tsc_local) else "tsc"
 
     try:
         result = subprocess.run(
-            [tsc_cmd, "--noEmit", "--project", tsconfig],
-            capture_output=True, text=True, timeout=25, cwd=project_dir,
+            [tsc_cmd, "--noEmit", "--incremental", "--project", tsconfig],
+            capture_output=True, text=True, timeout=30, cwd=project_dir,
         )
     except FileNotFoundError:
         # tsc not installed — skip gracefully
         sys.exit(0)
     except subprocess.TimeoutExpired:
-        print(f"guard-ts-typecheck: tsc timed out after 25s on {file_path}, check skipped", file=sys.stderr)
+        print(f"guard-ts-typecheck: tsc timed out after 30s on {file_path}, check skipped", file=sys.stderr)
         sys.exit(0)
     except OSError as e:
         print(f"guard-ts-typecheck: OS error running tsc: {e}", file=sys.stderr)

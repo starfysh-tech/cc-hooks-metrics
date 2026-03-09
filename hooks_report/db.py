@@ -116,7 +116,7 @@ class ActionItem:
 class FailureReason:
     snippet: str
     count: int
-    exit_code: int | None
+    exit_code: int
 
 
 @dataclass
@@ -591,6 +591,8 @@ HAVING (cur_r = 0 AND prev_r >= 5) OR (prev_r = 0 AND cur_r >= 5)
 
     def top_failure_reasons(self, step: str, days: int = 7, limit: int = 5) -> list[FailureReason]:
         """Most common stderr_snippet values for a step on non-zero exits."""
+        if not self._has_stderr_snippet_column():
+            return []
         rows = self._query("""
 SELECT stderr_snippet, COUNT(*) AS cnt, exit_code
 FROM hook_metrics
@@ -601,6 +603,26 @@ LIMIT ?
 """, (step, f"-{days}", limit))
         return [FailureReason(snippet=str(s or ""), count=_int(c), exit_code=_int(ec))
                 for s, c, ec in rows]
+
+    # ── failing_steps_7d() ────────────────────────────────────────────────────
+
+    def failing_steps_7d(self) -> list[str]:
+        """Return steps with non-zero exits in the last 7 days, excluding semantic exit steps."""
+        semantic = config.SEMANTIC_EXIT_STEPS
+        if not semantic:
+            extra = ""
+            params: tuple = ()
+        else:
+            placeholders = ",".join("?" * len(semantic))
+            extra = f" AND step NOT IN ({placeholders})"
+            params = tuple(semantic)
+        rows = self._query(
+            "SELECT DISTINCT step FROM hook_metrics "
+            f"WHERE exit_code != 0 AND ts > datetime('now', '-7 days'){extra} "
+            "ORDER BY step",
+            params,
+        )
+        return [row[0] for row in rows]
 
     # ── missing_expected_steps() ──────────────────────────────────────────────
 
@@ -766,7 +788,7 @@ LIMIT 5
             top_error = ""
             if reasons and reasons[0].snippet:
                 r = reasons[0]
-                code_label = config.EXIT_CODE_LABELS.get(r.exit_code or 0, f"exit {r.exit_code}")
+                code_label = config.EXIT_CODE_LABELS.get(r.exit_code, f"exit {r.exit_code}")
                 top_error = f" [{code_label}: \"{r.snippet[:60]}\" \u00d7{r.count}]"
             items.append(ActionItem(
                 category="FAIL", severity="red", step=step,
@@ -1527,21 +1549,21 @@ HAVING (cur_r = 0 AND prev_r >= 5) OR (prev_r = 0 AND cur_r >= 5)
 
     # ── Span export ───────────────────────────────────────────────────────────
 
-    def _has_session_column(self) -> bool:
-        """Check whether hook_metrics has the session column (added in Phase 1)."""
-        if hasattr(self, "_session_col_cached"):
-            return self._session_col_cached
+    def _has_column(self, column: str) -> bool:
+        """Check whether hook_metrics has the given column (cached per column name)."""
+        cache_key = f"_col_cached_{column}"
+        if hasattr(self, cache_key):
+            return getattr(self, cache_key)
         rows = self._query("PRAGMA table_info(hook_metrics)")
-        self._session_col_cached = any(r[1] == "session" for r in rows)
-        return self._session_col_cached
+        result = any(r[1] == column for r in rows)
+        setattr(self, cache_key, result)
+        return result
+
+    def _has_session_column(self) -> bool:
+        return self._has_column("session")
 
     def _has_stderr_snippet_column(self) -> bool:
-        """Check whether hook_metrics has the stderr_snippet column."""
-        if hasattr(self, "_stderr_snippet_col_cached"):
-            return self._stderr_snippet_col_cached
-        rows = self._query("PRAGMA table_info(hook_metrics)")
-        self._stderr_snippet_col_cached = any(r[1] == "stderr_snippet" for r in rows)
-        return self._stderr_snippet_col_cached
+        return self._has_column("stderr_snippet")
 
     def spans_raw(self, hours: int = 24, limit: int = 10000) -> list[tuple]:
         """Return hook_metrics rows for span export.
@@ -1563,9 +1585,9 @@ HAVING (cur_r = 0 AND prev_r >= 5) OR (prev_r = 0 AND cur_r >= 5)
             "WHERE ts > datetime('now', ?) ORDER BY ts LIMIT ?",
             (f"-{hours} hours", limit),
         )
-        if not has_session:
-            rows = [r + ("",) for r in rows]
-        if not has_stderr:
+        if not has_session:  # implies not has_stderr (stderr added after session)
+            rows = [r + ("", "") for r in rows]
+        elif not has_stderr:
             rows = [r + ("",) for r in rows]
         return rows
 

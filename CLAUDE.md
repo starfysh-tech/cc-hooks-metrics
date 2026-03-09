@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Working in this repo
 
-When you identify enhancements, improvements, or refactor opportunities that are **outside the scope of the current task**, add them to `TODO.md` (Parking Lot section) and continue with the current work. Do not implement them without explicit approval. This keeps changes focused and lets Randall review potential work before it's prioritized.
+Discoveries outside the current task go to `TODO.md`, not into the code. Add a one-line description under the appropriate section (Backlog for ideas, Prioritized for approved work). Do not implement without approval.
 
 ## Running the report
 
@@ -145,6 +145,7 @@ Optional guardrail scripts live in `guardrails/`. All use plain `python3` (stdli
 | `guard-security.py` | PreToolUse | Blocks destructive Bash + `.env` access |
 | `guard-python-lint.py` | PostToolUse | Runs `ruff check` on `.py` Write/Edit |
 | `guard-python-typecheck.py` | PostToolUse | Runs `ty check` on `.py` Write/Edit |
+| `guard-ts-typecheck.py` | PostToolUse | Runs `tsc --noEmit` on `.ts`/`.tsx` Write/Edit |
 | `guard-auto-allow.py` | PermissionRequest | Auto-allows read-only tools |
 
 All guardrails exit 2 + stderr to block (Claude self-corrects), exit 0 to allow. Wired via `hook-metrics.sh` for tracking. See `settings-guardrails-example.json` for copy-paste wiring.

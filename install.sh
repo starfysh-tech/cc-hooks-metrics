@@ -17,6 +17,7 @@ done
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 HOOKS_DIR="$HOME/.claude/hooks"
 VENV="$HOOKS_DIR/.venv"
+SCRIPTS=(hook-metrics.sh audit-logger.sh db-init.sh mermaid-lint.sh hooks-report.sh)
 
 ok()   { printf '[OK]   %s\n' "$*"; }
 warn() { printf '[WARN] %s\n' "$*"; }
@@ -68,7 +69,34 @@ if [ "$FORCE" -eq 0 ] && [ -d "$HOOKS_DIR" ]; then
   if [ ! -t 0 ]; then
     fail "~/.claude/hooks/ exists and stdin is not a TTY — re-run with --force"
   fi
-  printf '  ~/.claude/hooks/ already exists. Overwrite? [y/N] '
+  echo ""
+  echo "  Comparing installed hooks to repo..."
+  DIFF_LINES=$(
+    for dir in hooks_report guardrails; do
+      if [ ! -d "$HOOKS_DIR/$dir" ]; then
+        echo "Only in $REPO_ROOT: $dir"
+      else
+        diff -rq \
+          --exclude='.venv' --exclude='*.pyc' --exclude='__pycache__' --exclude='hooks.db' \
+          "$HOOKS_DIR/$dir" "$REPO_ROOT/$dir" 2>/dev/null || true
+      fi
+    done
+    for s in "${SCRIPTS[@]}"; do
+      if [ ! -f "$HOOKS_DIR/$s" ]; then
+        echo "Only in $REPO_ROOT: $s"
+      else
+        diff -q "$HOOKS_DIR/$s" "$REPO_ROOT/$s" 2>/dev/null || true
+      fi
+    done
+  )
+  if [ -z "$DIFF_LINES" ]; then
+    ok "Installed hooks match repo — no changes would be made"
+    exit 0
+  else
+    echo "$DIFF_LINES"
+    echo ""
+  fi
+  printf '  Overwrite with repo version? [y/N] '
   read -r REPLY || true
   [[ "${REPLY:-n}" =~ ^[Yy]$ ]] \
     || { echo "Deploy skipped. Re-run with --force to skip this prompt."; exit 0; }
@@ -100,7 +128,6 @@ fi
 echo ""
 echo "==> Phase 3: Deploy scripts"
 
-SCRIPTS=(hook-metrics.sh audit-logger.sh db-init.sh mermaid-lint.sh hooks-report.sh)
 for s in "${SCRIPTS[@]}"; do
   [ -f "$REPO_ROOT/$s" ] || fail "Missing source script: $s"
 done

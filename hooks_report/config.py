@@ -14,10 +14,11 @@ STEP_TIMEOUTS: dict[str, int] = {  # milliseconds
     "guard-security": 5000,
     "guard-python-lint": 30000,
     "guard-python-typecheck": 30000,
+    "guard-ts-typecheck": 30000,
     "guard-auto-allow": 5000,
 }
 SEMANTIC_EXIT_STEPS = {"codex-review"}
-GUARDRAIL_STEPS = {"guard-security", "guard-python-lint", "guard-python-typecheck", "guard-auto-allow"}
+GUARDRAIL_STEPS = {"guard-security", "guard-python-lint", "guard-python-typecheck", "guard-ts-typecheck", "guard-auto-allow"}
 
 # Steps expected to run regularly — used for coverage gap detection
 # Derived from STEP_TIMEOUTS so there's only one list to maintain

@@ -19,7 +19,7 @@ class Span:
     start_time_unix_nano: int
     end_time_unix_nano: int
     status_code: int        # 1=OK, 2=ERROR (OTel spec also defines 0=UNSET, unused here)
-    attributes: dict
+    attributes: dict | None
     session_id: str = ""    # source session; used by OTLP export for root span grouping
 
 
@@ -74,9 +74,9 @@ def hook_metric_to_span(row: tuple, redact: bool = True) -> Span:
     """Convert a hook_metrics row to a Span.
 
     Row order: id, ts, hook, step, cmd, exit_code, duration_ms,
-               real_s, user_s, sys_s, branch, sha, host, repo, session
+               real_s, user_s, sys_s, branch, sha, host, repo, session, stderr_snippet
     """
-    row_id, ts, hook, step, cmd, exit_code, duration_ms, _, _, _, branch, sha, host, repo, session = row
+    row_id, ts, hook, step, cmd, exit_code, duration_ms, _, _, _, branch, sha, host, repo, session, stderr_snippet = row
 
     start_ns = _ts_to_nanos(ts)
     if start_ns == 0:
@@ -106,6 +106,8 @@ def hook_metric_to_span(row: tuple, redact: bool = True) -> Span:
     }
     if not redact:
         attrs["hook.cmd"] = cmd
+    if stderr_snippet:
+        attrs["hook.stderr_snippet"] = stderr_snippet
 
     return Span(
         trace_id=trace_id_from_session(session),

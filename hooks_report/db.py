@@ -1535,18 +1535,28 @@ HAVING (cur_r = 0 AND prev_r >= 5) OR (prev_r = 0 AND cur_r >= 5)
         self._session_col_cached = any(r[1] == "session" for r in rows)
         return self._session_col_cached
 
+    def _has_stderr_snippet_column(self) -> bool:
+        """Check whether hook_metrics has the stderr_snippet column."""
+        if hasattr(self, "_stderr_snippet_col_cached"):
+            return self._stderr_snippet_col_cached
+        rows = self._query("PRAGMA table_info(hook_metrics)")
+        self._stderr_snippet_col_cached = any(r[1] == "stderr_snippet" for r in rows)
+        return self._stderr_snippet_col_cached
+
     def spans_raw(self, hours: int = 24, limit: int = 10000) -> list[tuple]:
         """Return hook_metrics rows for span export.
 
-        Gracefully degrades on old DBs without the session column — pads empty string.
+        Gracefully degrades on old DBs without the session or stderr_snippet column.
         Row order: id, ts, hook, step, cmd, exit_code, duration_ms,
-                   real_s, user_s, sys_s, branch, sha, host, repo, session
+                   real_s, user_s, sys_s, branch, sha, host, repo, session, stderr_snippet
         """
         has_session = self._has_session_column()
+        has_stderr = self._has_stderr_snippet_column()
         col_sel = (
             "id, ts, hook, step, cmd, exit_code, duration_ms, "
             "real_s, user_s, sys_s, branch, sha, host, repo"
             + (", session" if has_session else "")
+            + (", stderr_snippet" if has_stderr else "")
         )
         rows = self._query(
             f"SELECT {col_sel} FROM hook_metrics "
@@ -1554,7 +1564,9 @@ HAVING (cur_r = 0 AND prev_r >= 5) OR (prev_r = 0 AND cur_r >= 5)
             (f"-{hours} hours", limit),
         )
         if not has_session:
-            return [r + ("",) for r in rows]
+            rows = [r + ("",) for r in rows]
+        if not has_stderr:
+            rows = [r + ("",) for r in rows]
         return rows
 
     def audit_spans_raw(self, hours: int = 24, limit: int = 10000) -> list[tuple]:

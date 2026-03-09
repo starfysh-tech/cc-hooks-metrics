@@ -12,7 +12,7 @@ from hooks_report.otlp import (
     root_span_id_from_session,
     send_spans,
 )
-from hooks_report.spans import Span
+from hooks_report.spans import Span, hook_metric_to_span
 
 
 # ── root_span_id_from_session ──────────────────────────────────────────────────
@@ -316,6 +316,55 @@ def test_build_otlp_payload_root_span_ok_when_all_children_ok():
     otlp_spans = payload["resourceSpans"][0]["scopeSpans"][0]["spans"]
     root = next(s for s in otlp_spans if s["name"] == "session")
     assert root["status"]["code"] == 1
+
+
+def test_hook_metric_to_span_includes_stderr_snippet():
+    """hook_metric_to_span emits hook.stderr_snippet when non-empty."""
+    # Row order: id, ts, hook, step, cmd, exit_code, duration_ms,
+    #            real_s, user_s, sys_s, branch, sha, host, repo, session, stderr_snippet
+    row = (
+        42,
+        "2025-01-01T00:00:00+00:00",
+        "PostToolUse",
+        "guard-python-lint",
+        "/path/to/script.py",
+        1,
+        250,
+        None, None, None,
+        "main",
+        "abc123",
+        "mymachine",
+        "/home/user/myrepo",
+        "sess-abc",
+        "ruff: E501 line too long",
+    )
+    span = hook_metric_to_span(row, redact=True)
+    assert span.attributes is not None
+    assert "hook.stderr_snippet" in span.attributes
+    assert span.attributes["hook.stderr_snippet"] == "ruff: E501 line too long"
+
+
+def test_hook_metric_to_span_omits_stderr_snippet_when_empty():
+    """hook_metric_to_span omits hook.stderr_snippet when empty string."""
+    row = (
+        43,
+        "2025-01-01T00:00:00+00:00",
+        "PostToolUse",
+        "guard-python-lint",
+        "/path/to/script.py",
+        0,
+        100,
+        None, None, None,
+        "main",
+        "abc123",
+        "mymachine",
+        "/home/user/myrepo",
+        "sess-abc",
+        "",
+    )
+    span = hook_metric_to_span(row, redact=True)
+    assert span.attributes is not None
+    assert "hook.stderr_snippet" not in span.attributes
 
 
 def test_build_otlp_payload_root_span_timing_envelope():

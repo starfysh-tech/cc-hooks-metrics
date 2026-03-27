@@ -28,6 +28,8 @@ erDiagram
         TEXT    tool    "Tool name (e.g. Bash)"
         TEXT    input   "Raw tool_input JSON"
     }
+
+    hook_metrics }o--o{ audit_events : "correlates on session"
 ```
 
 ## Indexes

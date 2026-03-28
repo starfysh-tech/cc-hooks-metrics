@@ -33,38 +33,24 @@ _q() { sqlite3 "$HOOKS_DB" "$1"; }
 
 pre_count=$(_q "SELECT COUNT(*) FROM hook_metrics")
 
-# --- Run Python to parse JSONL, dedup, and generate SQL ---
-tmpout=$(mktemp)
-trap 'rm -f "$tmpout"' EXIT
+# --- Backup before writing (skip for dry-run) ---
+backup=""
+if [ "$DRY_RUN" -eq 0 ]; then
+  backup="${HOOKS_DB}.pre-import-$(date +%s).bak"
+  cp "$HOOKS_DB" "$backup"
+fi
 
-"$PYTHON" "$DIR/jsonl_import.py" "$JSONL_FILE" "$HOOKS_DB" "$DRY_RUN" > "$tmpout"
-
-# First line is counts: imported|skipped|errors|total
-counts=$(head -1 "$tmpout")
+# --- Run Python: parse JSONL, dedup, insert via parameterized queries ---
+counts=$("$PYTHON" "$DIR/jsonl_import.py" "$JSONL_FILE" "$HOOKS_DB" "$DRY_RUN")
 IFS='|' read -r imported skipped errors total <<< "$counts"
 
-# --- Dry run: Python already printed summary, exit ---
-if [ "$DRY_RUN" -eq 1 ]; then
+# --- Dry run or nothing to import: clean up backup and exit ---
+if [ "$DRY_RUN" -eq 1 ] || [ "$imported" -eq 0 ]; then
+  [ -n "$backup" ] && rm -f "$backup"
   exit 0
 fi
 
-# --- Nothing to import ---
-if [ "$imported" -eq 0 ]; then
-  exit 0
-fi
-
-# --- Backup before writing ---
-backup="${HOOKS_DB}.pre-import-$(date +%s).bak"
-cp "$HOOKS_DB" "$backup"
 echo "jsonl-import: backup created at $backup" >&2
-
-# --- Import in a single transaction (SQL starts at line 2 of tmpout) ---
-sqlite3 "$HOOKS_DB" >/dev/null <<SQL
-PRAGMA busy_timeout=1000;
-BEGIN TRANSACTION;
-$(tail -n +2 "$tmpout")
-COMMIT;
-SQL
 
 # --- Validate ---
 post_count=$(_q "SELECT COUNT(*) FROM hook_metrics")

@@ -1,15 +1,23 @@
 """Import hooktime JSONL entries into hooks.db (SQLite).
 
 Reads ~/.claude/hook-metrics.log, deduplicates against existing rows,
-and outputs SQL INSERT statements to stdout for the caller to execute.
+and inserts new rows using parameterized queries.
 
-Prints summary to stderr. Prints "imported|skipped|errors|total" to stdout
-as the first line, followed by SQL statements (if not dry-run).
+Prints summary to stderr. Prints "imported|skipped|errors|total" to stdout.
+Exit code 0 = success or nothing to do, 1 = validation failure.
 """
 
 import json
 import sqlite3
 import sys
+
+COLS = (
+    "ts", "hook", "step", "cmd", "exit_code", "duration_ms",
+    "real_s", "user_s", "sys_s", "branch", "sha", "host",
+    "repo", "session", "stderr_snippet",
+)
+PLACEHOLDERS = ", ".join("?" for _ in COLS)
+INSERT_SQL = f"INSERT INTO hook_metrics ({', '.join(COLS)}) VALUES ({PLACEHOLDERS})"
 
 
 def main():
@@ -71,32 +79,27 @@ def main():
             ))
             imported += 1
 
-    conn.close()
-
     total = imported + skipped + errors
 
     if dry_run:
         print(f"jsonl-import [DRY RUN]: {total} lines, {imported} would import, {skipped} already exist, {errors} parse errors", file=sys.stderr)
         print(f"{imported}|{skipped}|{errors}|{total}")
+        conn.close()
         return
 
     if imported == 0:
         print(f"jsonl-import: {total} lines, 0 new rows (all {skipped} already exist)", file=sys.stderr)
         print(f"0|{skipped}|{errors}|{total}")
+        conn.close()
         return
 
-    # Output counts line, then SQL statements
+    # Insert all rows in a single transaction using parameterized queries
+    conn.execute("BEGIN TRANSACTION")
+    conn.executemany(INSERT_SQL, rows)
+    conn.execute("COMMIT")
+    conn.close()
+
     print(f"{imported}|{skipped}|{errors}|{total}")
-
-    def sql_escape(v):
-        if isinstance(v, str):
-            return "'" + v.replace("'", "''") + "'"
-        return str(v)
-
-    cols = "ts, hook, step, cmd, exit_code, duration_ms, real_s, user_s, sys_s, branch, sha, host, repo, session, stderr_snippet"
-    for r in rows:
-        vals = ", ".join(sql_escape(v) for v in r)
-        print(f"INSERT INTO hook_metrics ({cols}) VALUES ({vals});")
 
 
 if __name__ == "__main__":

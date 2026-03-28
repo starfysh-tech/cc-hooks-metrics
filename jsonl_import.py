@@ -20,9 +20,9 @@ def main():
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA busy_timeout=1000")
 
-    # Load existing keys for dedup
+    # Load existing keys for dedup (last 90 days — older rows are pruned anyway)
     existing = set()
-    for row in conn.execute("SELECT ts, hook, step FROM hook_metrics"):
+    for row in conn.execute("SELECT ts, hook, step FROM hook_metrics WHERE ts > datetime('now', '-90 days')"):
         existing.add((row[0], row[1], row[2]))
 
     imported = 0

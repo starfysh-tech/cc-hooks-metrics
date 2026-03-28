@@ -24,7 +24,7 @@ hooktime() {
   branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
   sha="$(git rev-parse --short HEAD 2>/dev/null || echo "")"
   host_name="$(hostname 2>/dev/null || echo "")"
-  repo="$(git rev-parse --show-toplevel 2>/dev/null | xargs basename 2>/dev/null || echo "")"
+  repo="$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "")"
 
   # Temp file for timing data
   local time_file
@@ -49,7 +49,7 @@ hooktime() {
     awk "BEGIN{printf \"real %.2f\n\", $_ht_end - $_ht_start}" > "$time_file"
   else
     /usr/bin/time -p -o "$time_file" "$@"
-    exit_code=${PIPESTATUS[0]:-$?}
+    exit_code=$?
   fi
 
   # Parse timing from /usr/bin/time output

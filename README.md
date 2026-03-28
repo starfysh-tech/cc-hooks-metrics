@@ -10,18 +10,15 @@ Claude Code hooks run scripts on events (tool use, file edits, session start, et
 - **Actionable items** grouped by step — what's wrong and what to do about it
 - **Trend detection** — failure regressions, latency regressions, and fixes week-over-week
 - **OTel span export** — one span per hook execution and tool use, with optional OTLP backend push
-- **Interactive TUI** — dashboard + detail screens for perf, sessions, step reliability, and tuning advisor
+- **Overhead waterfall** — see where time goes across your hook pipeline
+- **Guardrail insights** — block rates with top block reasons per guardrail
+- **Tuning advisor** — actionable suggestions when hooks need attention
 
 ## Usage
 
 ```bash
-# Interactive TUI (default in a terminal)
-# Dashboard: lights + grouped actions. Press 'd' for detail, 's' for sessions, 't' for step reliability, 'a' for advisor.
+# Default: traffic lights, overhead waterfall, action items, trends, guardrails (~35-50 lines)
 hooks-report.sh
-
-# Static output — lean: lights, grouped actions, REGR/SLOW trends (~25-40 lines)
-hooks-report.sh --static
-hooks-report.sh | cat
 
 # Verbose: adds perf table, WoW summary, top projects, FIXED/GONE trends + 7 legacy sections
 hooks-report.sh --verbose
@@ -43,7 +40,7 @@ hooks-report.sh --step audit-logger
 hooks-report.sh --export | claude -p "Analyze and suggest next steps"
 ```
 
-Mode is auto-detected: TTY → Textual TUI; non-TTY or `--static` → Rich static text; `--export`/`--export-spans` → JSON.
+Output is always Rich static. `--export`/`--export-spans` → JSON.
 
 ## How it works
 
@@ -52,7 +49,7 @@ Claude Code event
   → hook-metrics.sh (passthrough wrapper — captures timing, git context, exit code)
     → your hook script (mermaid-lint, pytest, eslint, etc.)
       → hooks.db (SQLite, WAL mode, 30-day rolling window)
-        → hooks-report.sh (Python TUI / static / JSON)
+        → hooks-report.sh (Python Rich static / JSON)
 ```
 
 - **hook-metrics.sh** wraps any hook script, records wall-clock time via `/usr/bin/time -p`, and inserts a row into `hook_metrics`. The wrapped script's exit code is always preserved.
@@ -72,7 +69,7 @@ cd cc-hooks-metrics
 Or manually:
 
 ```bash
-pip install 'textual>=8.0,<9.0' 'rich>=14.0'
+pip install 'rich>=14.0'
 rsync -a --delete hooks_report/ ~/.claude/hooks/hooks_report/
 install -m 755 hooks-report.sh hook-metrics.sh audit-logger.sh db-init.sh \
   ~/.claude/hooks/
@@ -124,17 +121,16 @@ audit-logger.sh          # Tool-use JSON logger (bash, unchanged)
 db-init.sh               # Schema + SQLite helpers (bash, unchanged)
 install.sh               # Install script: deps, deploy, settings patch
 
-hooks_report/            # Python reporting package (Textual + Rich)
-  __main__.py            # Entry point: mode dispatch
-  cli.py                 # argparse: --export, --export-spans, --verbose, --static, --sessions, --step, --db, --include-sensitive
+hooks_report/            # Python reporting package (Rich)
+  __main__.py            # Entry point: export/static dispatch
+  cli.py                 # argparse: --export, --export-spans, --verbose, --sessions, --step, --db, --include-sensitive
   config.py              # Timeouts, thresholds, SKIP_HOOKS_PATTERN, OTLP constants
   db.py                  # HooksDB: typed dataclasses + SQLite queries
   advisor.py             # Tuning suggestions, hot sequences, periodic summaries
   otlp.py                # OTLP/HTTP JSON export (stdlib only, no SDK)
   render.py              # Rich rendering helpers
   spans.py               # OTel span model: Span dataclass, factory functions
-  static.py              # Static/piped output assembly
-  tui.py                 # Textual TUI: dashboard + detail, sessions, step, advisor screens
+  static.py              # Rich Console output assembly
 
 guardrails/              # Optional guardrail scripts (stdlib only, portable)
 ```

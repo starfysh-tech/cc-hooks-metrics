@@ -1377,16 +1377,24 @@ GROUP BY step ORDER BY total_runs DESC
             for step, tr, bl, br, am in rows
         ]
 
-        # Enrich with top block reason per guardrail
-        for s in summaries:
-            if s.blocks > 0:
-                reason_row = self._query_one("""
-SELECT substr(stderr_snippet, 1, 80), COUNT(*) FROM hook_metrics
-WHERE step = ? AND exit_code = 2 AND stderr_snippet != '' AND ts > datetime('now', ?)
-GROUP BY substr(stderr_snippet, 1, 80) ORDER BY COUNT(*) DESC LIMIT 1
-""", (s.step, day_str))
-                if reason_row and reason_row[0]:
-                    s.top_reason = reason_row[0]
+        # Enrich with top block reason per guardrail (single query)
+        steps_with_blocks = [s.step for s in summaries if s.blocks > 0]
+        if steps_with_blocks:
+            ph = ",".join("?" * len(steps_with_blocks))
+            reason_rows = self._query(f"""
+SELECT step, substr(stderr_snippet, 1, 80) AS reason, COUNT(*) AS cnt
+FROM hook_metrics
+WHERE step IN ({ph}) AND exit_code = 2 AND stderr_snippet != '' AND ts > datetime('now', ?)
+GROUP BY step, reason ORDER BY step, cnt DESC
+""", (*steps_with_blocks, day_str))
+            # Keep only the top reason per step (first row per step due to ORDER BY cnt DESC)
+            top_reasons: dict[str, str] = {}
+            for step, reason, _cnt in reason_rows:
+                if step not in top_reasons:
+                    top_reasons[step] = reason
+            for s in summaries:
+                if s.step in top_reasons:
+                    s.top_reason = top_reasons[s.step]
 
         return summaries
 

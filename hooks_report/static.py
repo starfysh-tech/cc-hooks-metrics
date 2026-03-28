@@ -73,7 +73,7 @@ def render_static(db: HooksDB, verbose: bool = False) -> None:
             from .advisor import guardrail_tuning
             suggestions = guardrail_tuning(db)
             if suggestions:
-                section_advisor(console, db)
+                section_advisor(console, db, suggestions=suggestions)
         except (HooksDBError, ImportError):
             pass
 
@@ -301,7 +301,7 @@ def section_wow_compact(console: Console, db: HooksDB, verbose: bool = False) ->
     console.print()
 
 
-def section_advisor(console: Console, db: HooksDB) -> None:
+def section_advisor(console: Console, db: HooksDB, suggestions: list | None = None) -> None:
     """Advisor: guardrail tuning suggestions + hot failure sequences."""
     from .advisor import guardrail_tuning
 
@@ -309,7 +309,8 @@ def section_advisor(console: Console, db: HooksDB) -> None:
     console.print(Text("  Advisor — Tuning Suggestions", style="bold"))
     console.print()
 
-    suggestions = guardrail_tuning(db)
+    if suggestions is None:
+        suggestions = guardrail_tuning(db)
     if suggestions:
         for s in suggestions:
             line = Text()

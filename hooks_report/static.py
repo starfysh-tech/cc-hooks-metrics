@@ -27,6 +27,18 @@ def render_static(db: HooksDB, verbose: bool = False) -> None:
     console.print()
     console.print(render.traffic_light_grid(summary))
 
+    # Overhead waterfall — where time goes
+    perf_data = db.perf_compact()
+    if perf_data:
+        total_overhead_7d = summary.overhead_7d_ms
+        overhead_min_7d = round(total_overhead_7d / 60000)
+        _sep(console)
+        console.print(Text(f"  Where Time Goes (last 7d — {overhead_min_7d} min total)", style="bold"))
+        console.print()
+        for line in render.build_overhead_waterfall(perf_data, total_overhead_7d):
+            console.print(line)
+        console.print()
+
     # Action items
     any_issues = (
         summary.rel_failures > 0
@@ -55,6 +67,16 @@ def render_static(db: HooksDB, verbose: bool = False) -> None:
     except HooksDBError as e:
         console.print(Text(f"  Guardrails — Error: {e}", style="red"))
 
+    # Advisor suggestions — show in default mode when there are recommendations
+    if not verbose:
+        try:
+            from .advisor import guardrail_tuning
+            suggestions = guardrail_tuning(db)
+            if suggestions:
+                section_advisor(console, db, suggestions=suggestions)
+        except (HooksDBError, ImportError):
+            pass
+
     if verbose:
         verbose_sections = [
             ("Performance", lambda: section_perf_compact(console, db, summary)),
@@ -71,9 +93,11 @@ def render_static(db: HooksDB, verbose: bool = False) -> None:
             except HooksDBError as e:
                 console.print(Text(f"  {name} — Error: {e}", style="red"))
 
-    # Closing border
+    # Closing border + drilldown hint
     console.print()
     console.print(Text("══════════════════════════════════════════════════════════════", style="bold cyan"))
+    if not verbose:
+        console.print(Text("  Drill down: --step <name> | --sessions | --verbose", style="dim"))
     console.print()
 
     if verbose:
@@ -277,7 +301,7 @@ def section_wow_compact(console: Console, db: HooksDB, verbose: bool = False) ->
     console.print()
 
 
-def section_advisor(console: Console, db: HooksDB) -> None:
+def section_advisor(console: Console, db: HooksDB, suggestions: list | None = None) -> None:
     """Advisor: guardrail tuning suggestions + hot failure sequences."""
     from .advisor import guardrail_tuning
 
@@ -285,7 +309,8 @@ def section_advisor(console: Console, db: HooksDB) -> None:
     console.print(Text("  Advisor — Tuning Suggestions", style="bold"))
     console.print()
 
-    suggestions = guardrail_tuning(db)
+    if suggestions is None:
+        suggestions = guardrail_tuning(db)
     if suggestions:
         for s in suggestions:
             line = Text()

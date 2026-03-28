@@ -210,6 +210,7 @@ class GuardrailSummary:
     blocks: int
     block_rate: Optional[float]
     avg_ms: float
+    top_reason: str = ""
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -1370,11 +1371,32 @@ FROM hook_metrics
 WHERE step IN ({placeholders}) AND ts > datetime('now', ?)
 GROUP BY step ORDER BY total_runs DESC
 """, (*tuple(config.GUARDRAIL_STEPS), day_str))
-        return [
+        summaries = [
             GuardrailSummary(step=step, total_runs=_int(tr), blocks=_int(bl),
                              block_rate=_opt_float(br), avg_ms=float(am))
             for step, tr, bl, br, am in rows
         ]
+
+        # Enrich with top block reason per guardrail (single query)
+        steps_with_blocks = [s.step for s in summaries if s.blocks > 0]
+        if steps_with_blocks:
+            ph = ",".join("?" * len(steps_with_blocks))
+            reason_rows = self._query(f"""
+SELECT step, substr(stderr_snippet, 1, 80) AS reason, COUNT(*) AS cnt
+FROM hook_metrics
+WHERE step IN ({ph}) AND exit_code = 2 AND stderr_snippet != '' AND ts > datetime('now', ?)
+GROUP BY step, reason ORDER BY step, cnt DESC
+""", (*steps_with_blocks, day_str))
+            # Keep only the top reason per step (first row per step due to ORDER BY cnt DESC)
+            top_reasons: dict[str, str] = {}
+            for step, reason, _cnt in reason_rows:
+                if step not in top_reasons:
+                    top_reasons[step] = reason
+            for s in summaries:
+                if s.step in top_reasons:
+                    s.top_reason = top_reasons[s.step]
+
+        return summaries
 
     def event_distribution(self, days: int = 7) -> list[tuple[str, int]]:
         day_str = f"-{days} days"

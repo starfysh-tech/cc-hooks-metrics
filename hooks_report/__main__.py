@@ -56,12 +56,9 @@ def main():
             from .advisor import periodic_summary, summary_to_json
             summary_data = periodic_summary(db, period=args.summary)
             print(json.dumps(summary_to_json(summary_data), indent=2))
-        elif args.static or not sys.stdout.isatty():
+        else:
             from .static import render_static
             render_static(db, verbose=args.verbose)
-        else:
-            from .tui import HooksReportApp
-            HooksReportApp(db).run()
     except HooksDBError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)

@@ -108,7 +108,7 @@ fi
 echo ""
 echo "==> Phase 2: Python venv + deps"
 
-if [ -x "$VENV/bin/python3" ] && "$VENV/bin/python3" -c "import textual, rich" 2>/dev/null; then
+if [ -x "$VENV/bin/python3" ] && "$VENV/bin/python3" -c "import rich" 2>/dev/null; then
   ok "Venv already valid (skipping install)"
 else
   mkdir -p "$HOOKS_DIR"
@@ -117,7 +117,7 @@ else
   python3 -m venv "$VENV" || fail "Failed to create venv at $VENV"
   "$VENV/bin/pip" install --quiet "$REPO_ROOT" \
     || fail "pip install failed — see pip output above for details"
-  "$VENV/bin/python3" -c "import textual, rich" \
+  "$VENV/bin/python3" -c "import rich" \
     || fail "Import check failed after install — venv may be corrupted"
   ok "Venv created and deps installed ($VENV)"
 fi
@@ -165,10 +165,10 @@ fi
 echo ""
 echo "==> Phase 5: Validate"
 
-if "$HOOKS_DIR/hooks-report.sh" --static; then
-  ok "hooks-report.sh --static passed"
+if "$HOOKS_DIR/hooks-report.sh" 2>/dev/null; then
+  ok "hooks-report.sh passed"
 else
-  warn "hooks-report.sh --static failed — check venv and Python deps"
+  warn "hooks-report.sh failed — check venv and Python deps"
 fi
 
 echo ""

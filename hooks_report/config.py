@@ -1,30 +1,48 @@
 import os
 import re
 
-STEP_TIMEOUTS: dict[str, int] = {  # milliseconds
-    "audit-logger": 5_000,
-    "codex-review": 120_000,
-    "mermaid-lint": 35000,
-    "no-verify-gate": 5000,
-    "check-pr-labels": 65000,
-    "phi-check": 15000,
-    "lint-check": 30000,
-    "migration-check": 10_000,
-    "stop-checks": 30000,
-    "guard-security": 5000,
-    "guard-python-lint": 30000,
-    "guard-python-typecheck": 30000,
-    "guard-ts-typecheck": 30000,
-    "guard-auto-allow": 5000,
+STEP_TIMEOUTS: dict[str, int] = {  # milliseconds — max recorded + 20%, outlier-filtered
+    # Claude Code hooks
+    "audit-logger": 15_000,
+    "codex-review": 360_000,
+    "mermaid-lint": 45_000,
+    "check-pr-labels": 65_000,
+    "phi-check": 15_000,
+    "lint-check": 30_000,
+    "migration-check": 401_000,
+    "stop-checks": 30_000,
+    "type-check": 30_000,
+    "block-destructive-gws": 5_000,
+    "guard-security": 15_000,
+    "guard-python-lint": 30_000,
+    "guard-python-typecheck": 30_000,
+    "guard-ts-typecheck": 30_000,
+    "guard-auto-allow": 5_000,
+    # Husky git hooks (imported via JSONL)
+    "pytest": 1_000_000,
+    "vitest": 75_000,
+    "eslint": 22_000,
+    "tsc": 22_000,
+    "tslint": 20_000,
+    "lint-staged": 36_000,
+    "commitlint": 14_000,
+    "prettier": 12_000,
+    "dep-check": 3_300,
+    "ruff-check": 1_900,
+    "ruff-format": 2_300,
+    "ruff-lint": 2_400,
+    "wireframe-extract": 300,
+    "no-verify-check": 230,
 }
-SEMANTIC_EXIT_STEPS = {"codex-review"}
-GUARDRAIL_STEPS = {"guard-security", "guard-python-lint", "guard-python-typecheck", "guard-ts-typecheck", "guard-auto-allow"}
+SEMANTIC_EXIT_STEPS = {"codex-review", "vitest", "pytest", "commitlint", "lint-staged"}
+GUARDRAIL_STEPS = {"guard-security", "guard-python-lint", "guard-python-typecheck", "guard-ts-typecheck", "guard-auto-allow", "block-destructive-gws"}
 
 # Steps expected to run regularly — used for coverage gap detection
 # Derived from STEP_TIMEOUTS so there's only one list to maintain
 EXPECTED_STEPS: set[str] = set(STEP_TIMEOUTS.keys())
 
 EXIT_CODE_LABELS: dict[int, str] = {
+    5: "I/O error",
     127: "binary not found",
     124: "timeout",
     141: "SIGPIPE",

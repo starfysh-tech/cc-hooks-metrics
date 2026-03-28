@@ -8,7 +8,7 @@ STEP_TIMEOUTS: dict[str, int] = {  # milliseconds — max recorded + 20%, outlie
     "mermaid-lint": 45_000,
     "check-pr-labels": 65_000,
     "phi-check": 15_000,
-    "lint-check": 30_000,
+    "lint-check": 85_000,
     "migration-check": 401_000,
     "stop-checks": 30_000,
     "type-check": 30_000,
@@ -16,16 +16,16 @@ STEP_TIMEOUTS: dict[str, int] = {  # milliseconds — max recorded + 20%, outlie
     "guard-security": 15_000,
     "guard-python-lint": 30_000,
     "guard-python-typecheck": 30_000,
-    "guard-ts-typecheck": 30_000,
+    "guard-ts-typecheck": 37_000,
     "guard-auto-allow": 5_000,
     # Husky git hooks (imported via JSONL)
     "pytest": 1_000_000,
-    "vitest": 75_000,
-    "eslint": 22_000,
-    "tsc": 22_000,
+    "vitest": 120_000,
+    "eslint": 30_000,
+    "tsc": 30_000,
     "tslint": 20_000,
     "lint-staged": 36_000,
-    "commitlint": 14_000,
+    "commitlint": 18_000,
     "prettier": 12_000,
     "dep-check": 3_300,
     "ruff-check": 1_900,
@@ -66,7 +66,6 @@ MIN_STEPS_FOR_COVERAGE = 3
 DEFAULT_DB_PATH = os.path.expanduser("~/.claude/hooks.db")
 
 SESSION_LIMIT_COMPACT = 5      # --verbose section: worst 5 by overhead
-SESSION_LIMIT_TUI = 15         # TUI SessionsScreen
 SESSION_LIMIT_STANDALONE = 20  # --sessions standalone renderer
 
 # Advisor tuning thresholds

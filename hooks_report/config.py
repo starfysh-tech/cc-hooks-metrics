@@ -27,7 +27,6 @@ STEP_TIMEOUTS: dict[str, int] = {  # milliseconds — max recorded + 20%, outlie
     "lint-staged": 36_000,
     "commitlint": 14_000,
     "prettier": 12_000,
-    "main": 43_000,
     "dep-check": 3_300,
     "ruff-check": 1_900,
     "ruff-format": 2_300,

@@ -194,6 +194,41 @@ def action_items_panel(
     return items
 
 
+def build_overhead_waterfall(steps: list, total_overhead_ms: int, max_rows: int = 5) -> list[Text]:
+    """Overhead waterfall: top N steps by total_ms with proportional bars."""
+    if not steps or total_overhead_ms <= 0:
+        return [Text("  No overhead data.", style="dim")]
+
+    lines: list[Text] = []
+    shown_ms = 0
+
+    for s in steps[:max_rows]:
+        pct = round(s.total_ms / total_overhead_ms * 100)
+        step_min = s.total_ms / 60000
+        bar = bar_chart(s.total_ms, total_overhead_ms, 30)
+        line = Text()
+        line.append(f"  {s.step:<20} ")
+        line.append_text(bar)
+        line.append(f"  {step_min:>5.0f} min  ({pct}%)")
+        lines.append(line)
+        shown_ms += s.total_ms
+
+    remaining_ms = total_overhead_ms - shown_ms
+    if remaining_ms > 0:
+        remaining_count = len(steps) - max_rows
+        if remaining_count > 0:
+            pct = round(remaining_ms / total_overhead_ms * 100)
+            remaining_min = remaining_ms / 60000
+            bar = bar_chart(remaining_ms, total_overhead_ms, 30)
+            line = Text()
+            line.append(f"  {'other (' + str(remaining_count) + ')':<20} ")
+            line.append_text(bar)
+            line.append(f"  {remaining_min:>5.0f} min  ({pct}%)")
+            lines.append(line)
+
+    return lines
+
+
 def pain_index_cell(index: float) -> Text:
     """Color-coded pain index: red bold >= PAIN_INDEX_RED, yellow >= PAIN_INDEX_YELLOW, else green."""
     label = f"{index:.1f}"
@@ -294,16 +329,29 @@ def build_step_reliability_table(steps: list[StepReliability]) -> Table:
 
 
 def build_guardrail_table(guardrails: list[GuardrailSummary]) -> Table:
-    """Table for guardrail summary: step | runs | blocks | block% | avg."""
+    """Table for guardrail summary: step | runs | blocks | block% | avg | top reason."""
     table = Table(box=None, padding=(0, 1), show_header=True, header_style="bold")
     table.add_column("Guard", width=24)
     table.add_column("Runs", width=7, justify="right")
-    table.add_column("Blocks", width=7, justify="right")
-    table.add_column("Block%", width=8, justify="right")
-    table.add_column("Avg", width=8, justify="right")
+    table.add_column("Blk", width=5, justify="right")
+    table.add_column("Blk%", width=6, justify="right")
+    table.add_column("Avg", width=6, justify="right")
+    table.add_column("Top block reason", no_wrap=True)
 
     for g in guardrails:
         block_pct = Text(f"{g.block_rate:.1f}%" if g.block_rate is not None else "—",
                          style="red" if (g.block_rate or 0) > 20 else "")
-        table.add_row(g.step, str(g.total_runs), str(g.blocks), block_pct, fmt_dur(g.avg_ms))
+        # Extract the useful part from stderr snippets
+        reason_text = g.top_reason
+        if "ruff lint errors" in reason_text:
+            reason_text = "ruff lint errors"
+        elif "type errors" in reason_text:
+            reason_text = "type errors"
+        else:
+            for prefix in ("ACTION REQUIRED: ", "BLOCKED: "):
+                if reason_text.startswith(prefix):
+                    reason_text = reason_text[len(prefix):]
+                    break
+        reason = Text(reason_text[:35], style="dim") if reason_text else Text("", style="dim")
+        table.add_row(g.step, str(g.total_runs), str(g.blocks), block_pct, fmt_dur(g.avg_ms), reason)
     return table

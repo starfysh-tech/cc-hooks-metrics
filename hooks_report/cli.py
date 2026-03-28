@@ -1,5 +1,4 @@
 import argparse
-import os
 from . import config
 
 
@@ -27,11 +26,6 @@ def parse_args():
         "--verbose",
         action="store_true",
         help="Add 7 legacy detail sections (static mode only)",
-    )
-    parser.add_argument(
-        "--static",
-        action="store_true",
-        help="Force Rich static output (no Textual TUI)",
     )
     parser.add_argument(
         "--db",

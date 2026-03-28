@@ -13,13 +13,8 @@ Discoveries outside the current task go to `TODO.md`, not into the code. Add a o
 ## Running the report
 
 ```bash
-# Interactive TUI (default when running in a terminal)
-# Dashboard: traffic lights + grouped action items. Press 'd' for detail (perf, WoW, projects).
+# Default: traffic lights, overhead waterfall, action items, trends, guardrails
 ~/.claude/hooks/hooks-report.sh
-
-# Static output — lean: lights, grouped actions, REGR/SLOW trend lines (~25-40 lines)
-~/.claude/hooks/hooks-report.sh --static
-~/.claude/hooks/hooks-report.sh | cat
 
 # Verbose: adds perf table, WoW summary, top projects, FIXED/GONE trends, + 7 legacy sections
 ~/.claude/hooks/hooks-report.sh --verbose
@@ -37,7 +32,7 @@ Discoveries outside the current task go to `TODO.md`, not into the code. Add a o
 ~/.claude/hooks/hooks-report.sh --export | claude -p "Analyze and suggest next steps"
 ```
 
-Mode is auto-detected: TTY → Textual TUI; non-TTY or `--static` → Rich static output; `--export` → JSON.
+Output is always Rich static. `--export` outputs JSON. `--verbose` adds legacy detail sections.
 
 ## Deployment
 
@@ -70,12 +65,12 @@ The database path defaults to `~/.claude/hooks.db` and can be overridden with `C
 
 ### Python package: hooks_report/
 
-Rewrite of the original 1331-line bash report in Python (Textual 8.0.0 + Rich 14.3.3).
+Rewrite of the original 1331-line bash report in Python (Rich 14.3.3).
 
 ```
 hooks_report/
   __init__.py       # empty
-  __main__.py       # entry: export/static/tui dispatch, lazy Textual import
+  __main__.py       # entry: export/static dispatch
   cli.py            # argparse: --export, --export-spans, --verbose, --static, --db, --include-sensitive
   config.py         # STEP_TIMEOUTS, SEMANTIC_EXIT_STEPS, thresholds, SKIP_HOOKS_PATTERN, OTLP constants
   db.py             # HooksDB: typed dataclasses + SQLite queries
@@ -84,7 +79,6 @@ hooks_report/
   spans.py          # OTel span model: Span dataclass, hook_metric_to_span, audit_event_to_span, spans_to_dict
   static.py         # Rich Console output: compact sections + verbose sections + export_json
   advisor.py        # Tuning suggestions, hot sequences, periodic summaries
-  tui.py            # Textual app: HooksReportApp (dashboard) + DetailScreen + SessionsScreen + StepDrillScreen + AdvisorScreen
 ```
 
 **hooks-report.sh** is a Python wrapper with venv detection:
@@ -98,14 +92,12 @@ PYTHONPATH="$DIR" exec "$PYTHON" -m hooks_report "$@"
 
 ### Output structure
 
-**Default / --static mode** (~25-40 lines):
+**Default mode** (~35-50 lines):
 1. Traffic-light grid (Reliability / Performance / Broken Hooks / Regressions / Review Gate)
-2. Action items grouped by step — one entry per step with all issues deduplicated (or "All clear")
-3. `section_wow_compact()` — REGR/SLOW trend lines only (FIXED/GONE suppressed in default)
-
-**TUI mode** (default when TTY): Dashboard with traffic lights + grouped action items.
-Keybindings: `d` → detail (perf, WoW, projects), `s` → sessions, `t` → step reliability.
-All data accessible interactively without flags.
+2. Overhead waterfall — top 5 steps by total overhead with proportional bars
+3. Action items grouped by step — one entry per step with all issues deduplicated (or "All clear")
+4. `section_wow_compact()` — REGR/SLOW trend lines only (FIXED/GONE suppressed in default)
+5. Guardrails table with top block reason per guardrail
 
 **--verbose mode** adds compact sections + 7 legacy detail sections:
 - `section_perf_compact()` — per-step performance table (last 7d, avg ≥500ms or has timeout, max 12 rows)
@@ -126,8 +118,7 @@ All data accessible interactively without flags.
 - NULL failure_rate → `None` in Python, `null` in JSON (not `0`)
 - `CLAUDE_HOOKS_DB` env var overrides DB path
 - Empty/missing DB: auto-init schema on first connect, returns zero rows (no crash)
-- Textual 8.x: do **not** override `ScrollableContainer` CSS — it already has `height: 1fr; overflow: auto auto` in DEFAULT_CSS; overriding breaks the layout
-- All Rich content in Textual widgets must be `rich.text.Text` objects, not markup strings
+- All Rich content must be `rich.text.Text` objects, not markup strings
 
 ## Adding a new hook step
 

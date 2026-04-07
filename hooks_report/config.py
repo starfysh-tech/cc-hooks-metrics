@@ -1,5 +1,23 @@
+from __future__ import annotations
+
 import os
 import re
+
+# ---------------------------------------------------------------------------
+# Claude Code version requirements
+# Keep in sync with version-requirements (sourced by bash scripts)
+# ---------------------------------------------------------------------------
+MIN_CC_VERSION = "2.1.50"          # Minimum: worktree hooks, core lifecycle events
+RECOMMENDED_CC_VERSION = "2.1.85"  # Full feature set: conditional `if`, PermissionDenied, etc.
+
+
+def parse_cc_version(version_string: str) -> tuple[int, ...] | None:
+    """Parse 'Claude Code v2.1.85' or '2.1.85' → (2, 1, 85). Returns None on failure."""
+    m = re.search(r"(\d+)\.(\d+)\.(\d+)", version_string)
+    if not m:
+        return None
+    return tuple(int(g) for g in m.groups())
+
 
 STEP_TIMEOUTS: dict[str, int] = {  # milliseconds — max recorded + 20%, outlier-filtered
     # Claude Code hooks

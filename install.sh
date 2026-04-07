@@ -17,7 +17,7 @@ done
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 HOOKS_DIR="$HOME/.claude/hooks"
 VENV="$HOOKS_DIR/.venv"
-SCRIPTS=(hook-metrics.sh audit-logger.sh db-init.sh mermaid-lint.sh hooks-report.sh jsonl-import.sh jsonl_import.py hooktime)
+SCRIPTS=(hook-metrics.sh audit-logger.sh db-init.sh mermaid-lint.sh hooks-report.sh jsonl-import.sh jsonl_import.py hooktime version-requirements)
 
 ok()   { printf '[OK]   %s\n' "$*"; }
 warn() { printf '[WARN] %s\n' "$*"; }
@@ -62,6 +62,27 @@ if ty_ver=$(ty --version 2>&1); then
 else
   warn "ty not found (optional — guard-python-typecheck will be disabled)"
   warn "  Install: brew install ty  OR  uv tool install ty  OR  cargo install ty"
+fi
+
+# Claude Code version check (two-tier: MIN aborts, RECOMMENDED warns)
+[ -f "$REPO_ROOT/version-requirements" ] || fail "Missing version-requirements"
+# shellcheck source=version-requirements
+source "$REPO_ROOT/version-requirements"
+
+_version_lt() {  # sort -V handles multi-segment versions correctly
+  [ "$1" = "$2" ] && return 1
+  printf '%s\n%s\n' "$1" "$2" | sort -V | head -n1 | grep -qx "$1"
+}
+
+cc_version=$(claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+if [[ -z "$cc_version" ]]; then
+  warn "Could not detect Claude Code version — skipping check"
+elif _version_lt "$cc_version" "$MIN_CC_VERSION"; then
+  fail "Claude Code $cc_version is below minimum $MIN_CC_VERSION — upgrade first"
+elif _version_lt "$cc_version" "$RECOMMENDED_CC_VERSION"; then
+  warn "Claude Code $cc_version — full feature set requires $RECOMMENDED_CC_VERSION+"
+else
+  ok "Claude Code $cc_version"
 fi
 
 # Gate on overwrite *before* venv install to avoid wasted work

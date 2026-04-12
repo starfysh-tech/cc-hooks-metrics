@@ -165,7 +165,7 @@ AI/DevOps enthusiasts — conference/meetup attendees, community members, and de
 - **Reference:** Grafana / Datadog — dense observability dashboards with strong data hierarchy, meaningful color, and panels that reward close inspection
 - **Anti-reference:** Generic SaaS landing pages, excessive whitespace, decorative illustrations with no data
 - **Theme:** Dark and light mode. Dark is primary (matches terminal-native identity); light mode for accessibility and varied contexts
-- **Typography:** Monospace font stack (`SF Mono`, `Cascadia Code`, `JetBrains Mono`, `Fira Code`) — reinforces CLI/developer identity
+- **Typography:** `Space Grotesk` for headlines, `IBM Plex Mono` for data/code. Terminal report uses system monospace (`SF Mono`, `Cascadia Code`, `JetBrains Mono`, `Fira Code`)
 
 ### Color System
 Semantic palette rooted in observability conventions:

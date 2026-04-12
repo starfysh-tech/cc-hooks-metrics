@@ -38,8 +38,7 @@ def parse_cc_version(version_string: str) -> tuple[int, ...] | None:
 **`install.sh`** — new preflight step after Python check:
 ```bash
 # Phase 0.5: Claude Code version
-cc_version=$(claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
-if [[ -z "$cc_version" ]]; then
+if ! cc_version=$(claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1) || [[ -z "$cc_version" ]]; then
     warn "Could not detect Claude Code version — skipping check"
 elif version_lt "$cc_version" "$MIN_CC_VERSION"; then
     die "Claude Code $cc_version is below minimum $MIN_CC_VERSION"
@@ -53,7 +52,7 @@ fi
 # Cache version for 24h to avoid 200-500ms Node.js startup on every report run
 CACHE="$HOME/.claude/hooks/.cc-version-cache"
 if [[ ! -f "$CACHE" ]] || [[ $(find "$CACHE" -mmin +1440 2>/dev/null) ]]; then
-    claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' > "$CACHE" 2>/dev/null
+    claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 > "$CACHE" 2>/dev/null
 fi
 cc_version=$(cat "$CACHE" 2>/dev/null)
 # Warning only, don't abort report

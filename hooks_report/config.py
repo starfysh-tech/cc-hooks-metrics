@@ -8,7 +8,7 @@ import re
 # Keep in sync with version-requirements (sourced by bash scripts)
 # ---------------------------------------------------------------------------
 MIN_CC_VERSION = "2.1.50"          # Minimum: worktree hooks, core lifecycle events
-RECOMMENDED_CC_VERSION = "2.1.85"  # Full feature set: conditional `if`, PermissionDenied, etc.
+RECOMMENDED_CC_VERSION = "2.1.89"  # Full feature set: conditional `if`, PermissionDenied, etc.
 
 
 def parse_cc_version(version_string: str) -> tuple[int, ...] | None:

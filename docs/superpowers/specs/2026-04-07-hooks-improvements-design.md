@@ -28,7 +28,7 @@ Claude Code has added hook capabilities since v2.1.50 that cc-hooks-metrics does
 **`hooks_report/config.py`**
 ```python
 MIN_CC_VERSION = "2.1.50"       # Minimum: worktree hooks
-RECOMMENDED_CC_VERSION = "2.1.85"  # Full feature set
+RECOMMENDED_CC_VERSION = "2.1.89"  # Full feature set (incl. PermissionDenied)
 
 def parse_cc_version(version_string: str) -> tuple[int, ...] | None:
     """Parse 'Claude Code v2.1.85' → (2, 1, 85). Returns None on failure."""

@@ -151,3 +151,35 @@ All guardrails exit 2 + stderr to block (Claude self-corrects), exit 0 to allow.
 ### Naming convention
 
 Guardrail steps use `guard-` prefix (e.g., `guard-security`, `guard-python-lint`).
+
+## Design Context
+
+### Users
+AI/DevOps enthusiasts — conference/meetup attendees, community members, and developers curious about AI agent observability. Technical audience comfortable with terminals, dashboards, and metrics, but not necessarily deep in this specific tooling.
+
+### Brand Personality
+**Bold, data-driven, precise.** The tool earns trust through real numbers, not marketing polish. It should feel like looking at a well-built control room — impressive density of information, immediately legible.
+
+### Aesthetic Direction
+- **Visual tone:** Bold and impressive — "wow factor" for demos while remaining data-dense and functional
+- **Reference:** Grafana / Datadog — dense observability dashboards with strong data hierarchy, meaningful color, and panels that reward close inspection
+- **Anti-reference:** Generic SaaS landing pages, excessive whitespace, decorative illustrations with no data
+- **Theme:** Dark and light mode. Dark is primary (matches terminal-native identity); light mode for accessibility and varied contexts
+- **Typography:** `Space Grotesk` for headlines, `IBM Plex Mono` for data/code. Terminal report uses system monospace (`SF Mono`, `Cascadia Code`, `JetBrains Mono`, `Fira Code`)
+
+### Color System
+Semantic palette rooted in observability conventions:
+- **Red** (`#f85149`) — critical, failures, blocks
+- **Yellow** (`#d29922`) — warnings, degraded performance
+- **Green** (`#3fb950`) — healthy, success, all clear
+- **Blue/Cyan** (`#58a6ff` / `#79c0ff`) — information, accent, data viz primary
+- **Purple** (`#bc8cff`) — secondary emphasis, highlights
+- **Orange** (`#f0883e`) — tertiary warning, attention
+- Neutrals: dark surfaces (`#0d1117` → `#1c2129`), muted text (`#8b949e`), borders (`#30363d`)
+
+### Design Principles
+1. **Data density over decoration** — every pixel should carry information or improve legibility. No ornamental elements.
+2. **Color means something** — never use color for aesthetics alone. Red = bad, green = good, yellow = caution. Consistent everywhere (terminal, web, export).
+3. **Terminal-native first** — the CLI report is the canonical experience. Web pages extend it, not replace it. Monospace, dark backgrounds, and data tables are features, not constraints.
+4. **Impressive at first glance, useful on inspection** — the "wow" comes from real data, well-organized. Waterfall charts, traffic lights, and trend badges should be visually striking AND immediately actionable.
+5. **Accessible without compromise** — light/dark mode, sufficient contrast, semantic HTML. Accessibility is a requirement, not a nice-to-have.

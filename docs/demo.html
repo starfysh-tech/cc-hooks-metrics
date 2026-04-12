@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>cc-hooks-metrics — Live Demo</title>
+<meta name="description" content="Live data from a production Claude Code setup — 37k+ hook runs, 5 guardrails, real terminal output.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ═══════════════════════════════════════
+     SHARED THEME — warm observatory
+     ═══════════════════════════════════════ */
+  :root {
+    color-scheme: dark light;
+    --bg:           #0f0f0f;
+    --bg-raised:    #1a1a18;
+    --bg-inset:     #090908;
+    --border:       #2a2a26;
+    --text:         #ece8e0;
+    --text-sub:     #9e9a90;
+    --text-faint:   #5c5952;
+    --accent:       #e09832;
+    --accent-dim:   #b87a24;
+    --accent-bg:    rgba(224,152,50,0.08);
+    --red:          #e5534b;
+    --green:        #57ab5a;
+    --yellow:       #c69026;
+    --blue:         #539bf5;
+    --purple:       #986ee2;
+    --code-bg:      #141412;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg:           #f6f3ed;
+      --bg-raised:    #ffffff;
+      --bg-inset:     #edeae3;
+      --border:       #d4d0c8;
+      --text:         #1a1916;
+      --text-sub:     #5c5952;
+      --text-faint:   #9e9a90;
+      --accent:       #c07b18;
+      --accent-dim:   #9e6510;
+      --accent-bg:    rgba(192,123,24,0.06);
+      --red:          #cc3d35;
+      --green:        #347d39;
+      --yellow:       #a67612;
+      --blue:         #3574c2;
+      --purple:       #7048b8;
+      --code-bg:      #edeae3;
+    }
+  }
+
+  /* ═══════════════════════════════════════
+     RESET + BASE
+     ═══════════════════════════════════════ */
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  ::selection { background: var(--accent); color: var(--bg); }
+
+  .wrap {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding-inline: clamp(1.25rem, 4vw, 3rem);
+  }
+  .mono {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.88em;
+  }
+
+  /* ═══════════════════════════════════════
+     NAV
+     ═══════════════════════════════════════ */
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    padding: 1rem 0;
+    background: color-mix(in oklch, var(--bg) 85%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  nav .wrap { display: flex; align-items: center; justify-content: space-between; }
+  nav .logo {
+    font-weight: 700; font-size: 0.95rem; letter-spacing: -0.02em;
+    text-decoration: none; color: var(--text);
+  }
+  nav .logo span { color: var(--accent); }
+  nav .links { display: flex; gap: 1.5rem; align-items: center; list-style: none; }
+  nav .links a {
+    color: var(--text-sub); text-decoration: none; font-size: 0.85rem;
+    font-weight: 500; transition: color 0.15s;
+  }
+  nav .links a:hover { color: var(--text); }
+  nav .links a.active { color: var(--accent); }
+
+  /* ═══════════════════════════════════════
+     HERO — compact for demo page
+     ═══════════════════════════════════════ */
+  .hero {
+    padding-top: clamp(6rem, 12vh, 8rem);
+    padding-bottom: clamp(2rem, 4vh, 3rem);
+  }
+  .hero h1 {
+    font-size: clamp(1.8rem, 4vw, 2.8rem);
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.035em;
+    margin-bottom: 0.75rem;
+  }
+  .hero p {
+    font-size: clamp(0.95rem, 1.1vw, 1.05rem);
+    color: var(--text-sub);
+    max-width: 52ch;
+    line-height: 1.6;
+  }
+
+  /* ═══════════════════════════════════════
+     TICKER
+     ═══════════════════════════════════════ */
+  .ticker {
+    display: flex;
+    gap: clamp(1.5rem, 3vw, 3rem);
+    padding-top: clamp(1.5rem, 3vh, 2rem);
+    margin-top: clamp(1.5rem, 3vh, 2rem);
+    border-top: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .ticker-item { display: flex; flex-direction: column; }
+  .ticker-val {
+    font-size: clamp(1.4rem, 2vw, 1.8rem);
+    font-weight: 700; letter-spacing: -0.03em; line-height: 1.2;
+  }
+  .ticker-label {
+    font-size: 0.68rem; font-weight: 500; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--text-faint); margin-top: 0.15rem;
+  }
+
+  /* ═══════════════════════════════════════
+     SECTIONS
+     ═══════════════════════════════════════ */
+  .section { padding-block: clamp(3rem, 7vh, 5rem); }
+  .section-label {
+    font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.14em; color: var(--accent); margin-bottom: 0.75rem;
+  }
+  .section h2 {
+    font-size: clamp(1.4rem, 2.5vw, 2rem);
+    font-weight: 700; letter-spacing: -0.03em; line-height: 1.15;
+    margin-bottom: clamp(1rem, 2vh, 1.5rem);
+  }
+
+  /* ═══════════════════════════════════════
+     TRAFFIC LIGHTS
+     ═══════════════════════════════════════ */
+  .traffic-grid {
+    display: flex;
+    gap: 0;
+    margin: 1.5rem 0;
+    background: var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .traffic-item {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.85rem 1rem;
+    background: var(--bg);
+    min-width: 0;
+  }
+  .traffic-item + .traffic-item { border-left: 1px solid var(--border); }
+  @media (max-width: 700px) {
+    .traffic-grid { flex-direction: column; }
+    .traffic-item + .traffic-item { border-left: none; border-top: 1px solid var(--border); }
+  }
+  .tl-dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  }
+  .tl-dot.green { background: var(--green); box-shadow: 0 0 6px color-mix(in oklch, var(--green) 40%, transparent); }
+  .tl-dot.yellow { background: var(--yellow); box-shadow: 0 0 6px color-mix(in oklch, var(--yellow) 40%, transparent); }
+  .tl-name { font-size: 0.82rem; font-weight: 600; white-space: nowrap; }
+  .tl-detail { font-size: 0.72rem; color: var(--text-faint); margin-left: auto; white-space: nowrap; }
+
+  /* ═══════════════════════════════════════
+     WATERFALL BARS
+     ═══════════════════════════════════════ */
+  .waterfall { margin: 1.5rem 0; }
+  .wf-row {
+    display: grid;
+    grid-template-columns: 140px 1fr 100px;
+    gap: 0.75rem;
+    align-items: center;
+    padding: 0.35rem 0;
+  }
+  @media (max-width: 600px) {
+    .wf-row { grid-template-columns: 100px 1fr 70px; }
+  }
+  .wf-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.78rem;
+    text-align: right;
+    color: var(--text-sub);
+  }
+  .wf-track {
+    height: 16px;
+    background: var(--bg-raised);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .wf-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--accent);
+  }
+  .wf-val {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--text-faint);
+    text-align: right;
+  }
+
+  /* ═══════════════════════════════════════
+     SPECIMEN — terminal output
+     ═══════════════════════════════════════ */
+  .specimen { position: relative; margin: 1.5rem 0; }
+  .specimen-label {
+    position: absolute; top: -0.6rem; left: 1.5rem;
+    font-size: 0.65rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.12em; color: var(--accent);
+    background: var(--bg); padding: 0 0.5rem; z-index: 1;
+  }
+  .specimen-frame {
+    border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+  }
+  .specimen-frame pre {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: clamp(0.66rem, 0.8vw, 0.75rem);
+    line-height: 1.5;
+    padding: clamp(1rem, 2vw, 1.5rem);
+    overflow-x: auto;
+    background: var(--code-bg);
+    color: var(--text);
+  }
+  .s-dim    { color: var(--text-faint); }
+  .s-accent { color: var(--accent); }
+  .s-green  { color: var(--green); }
+  .s-red    { color: var(--red); }
+  .s-yellow { color: var(--yellow); }
+  .s-blue   { color: var(--blue); }
+  .s-bold   { font-weight: 500; }
+  .s-line   { color: var(--border); }
+
+  /* ═══════════════════════════════════════
+     GUARDRAILS — stacked rows
+     ═══════════════════════════════════════ */
+  .guards {
+    display: flex; flex-direction: column; gap: 1px;
+    background: var(--border); border-radius: 6px; overflow: hidden;
+    margin: 1.5rem 0;
+  }
+  .guard-row {
+    display: grid;
+    grid-template-columns: 1fr 100px 60px 60px 60px;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: var(--bg);
+    align-items: center;
+    transition: background 0.15s;
+    font-size: 0.82rem;
+  }
+  .guard-row:hover { background: var(--bg-raised); }
+  .guard-head { color: var(--text-faint); font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+  .guard-head.guard-row:hover { background: var(--bg); }
+  @media (max-width: 650px) {
+    .guard-row { grid-template-columns: 1fr 60px 60px; }
+    .guard-row .hide-sm { display: none; }
+  }
+  .g-name { font-weight: 600; }
+  .g-sub { font-size: 0.72rem; color: var(--text-faint); }
+  .g-val { font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; text-align: right; }
+
+  /* ═══════════════════════════════════════
+     DATA GRID — stats in 2-col
+     ═══════════════════════════════════════ */
+  .data-two {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: clamp(2rem, 4vw, 4rem);
+    align-items: start;
+  }
+  @media (max-width: 768px) {
+    .data-two { grid-template-columns: 1fr; }
+  }
+
+  /* ═══════════════════════════════════════
+     CALLOUT
+     ═══════════════════════════════════════ */
+  .callout {
+    padding: clamp(1.25rem, 2.5vw, 1.75rem);
+    border-left: 3px solid var(--accent);
+    background: var(--accent-bg);
+    border-radius: 0 6px 6px 0;
+    margin: 1.5rem 0;
+    font-size: 0.85rem;
+    color: var(--text-sub);
+    line-height: 1.6;
+  }
+  .callout strong { color: var(--text); }
+  .callout code {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.84em; color: var(--accent);
+  }
+
+  /* ═══════════════════════════════════════
+     ARCH LIST
+     ═══════════════════════════════════════ */
+  .arch-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .arch-list li {
+    padding-left: 1.25rem;
+    border-left: 2px solid var(--border);
+    transition: border-color 0.2s;
+  }
+  .arch-list li:hover { border-left-color: var(--accent); }
+  .arch-list strong { display: block; font-size: 0.88rem; margin-bottom: 0.15rem; }
+  .arch-list span { font-size: 0.8rem; color: var(--text-sub); line-height: 1.5; }
+  .arch-list code {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.84em; color: var(--accent);
+  }
+
+  /* ═══════════════════════════════════════
+     COMMANDS
+     ═══════════════════════════════════════ */
+  .cmd-list { display: flex; flex-direction: column; margin: 1.5rem 0; }
+  .cmd-row {
+    display: grid; grid-template-columns: 1fr 1.5fr;
+    gap: 1.5rem; padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border); align-items: baseline;
+  }
+  .cmd-row:first-child { border-top: 1px solid var(--border); }
+  @media (max-width: 600px) { .cmd-row { grid-template-columns: 1fr; gap: 0.2rem; } }
+  .cmd-code { font-family: 'IBM Plex Mono', monospace; font-size: 0.82rem; color: var(--accent); }
+  .cmd-desc { font-size: 0.82rem; color: var(--text-sub); }
+
+  /* ═══════════════════════════════════════
+     NUMBERS ROW
+     ═══════════════════════════════════════ */
+  .numbers {
+    display: flex;
+    gap: 0;
+    background: var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    margin: 1.5rem 0;
+    flex-wrap: wrap;
+  }
+  .num-item {
+    flex: 1;
+    min-width: 100px;
+    padding: 1rem 1.25rem;
+    background: var(--bg);
+    border-right: 1px solid var(--border);
+  }
+  .num-item:last-child { border-right: none; }
+  .num-val {
+    font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2;
+  }
+  .num-label {
+    font-size: 0.68rem; font-weight: 500; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--text-faint); margin-top: 0.1rem;
+  }
+
+  /* ═══════════════════════════════════════
+     FOOTER
+     ═══════════════════════════════════════ */
+  footer {
+    padding: clamp(2.5rem, 5vh, 4rem) 0;
+    border-top: 1px solid var(--border);
+  }
+  .footer-inner {
+    display: flex; justify-content: space-between; align-items: baseline;
+    flex-wrap: wrap; gap: 1rem;
+  }
+  footer .logo { font-weight: 700; font-size: 0.9rem; letter-spacing: -0.02em; }
+  footer .logo span { color: var(--accent); }
+  footer .meta { font-size: 0.75rem; color: var(--text-faint); }
+  footer a { color: var(--text-sub); text-decoration: none; transition: color 0.15s; }
+  footer a:hover { color: var(--text); }
+
+  /* ═══════════════════════════════════════
+     REVEAL ANIMATION
+     ═══════════════════════════════════════ */
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal {
+      opacity: 0; transform: translateY(16px);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+    .reveal-d1 { transition-delay: 0.08s; }
+    .reveal-d2 { transition-delay: 0.16s; }
+    .reveal-d3 { transition-delay: 0.24s; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal { opacity: 1; transform: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="wrap">
+    <a class="logo" href="index.html">cc-hooks<span>-metrics</span></a>
+    <ul class="links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="demo.html" class="active">Demo</a></li>
+      <li><a href="https://github.com/randallnoval/cc-hooks-metrics">GitHub</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero wrap">
+  <h1 class="reveal">Live demo data</h1>
+  <p class="reveal reveal-d1">Real output from a production Claude Code setup — 37k+ hook runs across 27 repositories. Every number on this page comes from actual telemetry.</p>
+  <div class="ticker reveal reveal-d2">
+    <div class="ticker-item">
+      <span class="ticker-val">37,141</span>
+      <span class="ticker-label">Runs / week</span>
+    </div>
+    <div class="ticker-item">
+      <span class="ticker-val" style="color:var(--green)">0.01%</span>
+      <span class="ticker-label">Failure rate</span>
+    </div>
+    <div class="ticker-item">
+      <span class="ticker-val" style="color:var(--accent)">224 min</span>
+      <span class="ticker-label">Overhead</span>
+    </div>
+    <div class="ticker-item">
+      <span class="ticker-val">5,114</span>
+      <span class="ticker-label">24h runs</span>
+    </div>
+    <div class="ticker-item">
+      <span class="ticker-val">27</span>
+      <span class="ticker-label">Repos</span>
+    </div>
+  </div>
+</section>
+
+<!-- HEALTH STATUS -->
+<section class="section wrap">
+  <div class="section-label reveal">Health at a glance</div>
+  <h2 class="reveal">Traffic light status</h2>
+
+  <div class="traffic-grid reveal reveal-d1">
+    <div class="traffic-item">
+      <div class="tl-dot green"></div>
+      <span class="tl-name">Reliability</span>
+      <span class="tl-detail">0.01% fail</span>
+    </div>
+    <div class="traffic-item">
+      <div class="tl-dot green"></div>
+      <span class="tl-name">Performance</span>
+      <span class="tl-detail">Under limits</span>
+    </div>
+    <div class="traffic-item">
+      <div class="tl-dot green"></div>
+      <span class="tl-name">Broken</span>
+      <span class="tl-detail">None</span>
+    </div>
+    <div class="traffic-item">
+      <div class="tl-dot green"></div>
+      <span class="tl-name">Review Gate</span>
+      <span class="tl-detail">38% findings</span>
+    </div>
+  </div>
+</section>
+
+<!-- OVERHEAD WATERFALL -->
+<section class="section wrap">
+  <div class="section-label reveal">Where time goes</div>
+  <h2 class="reveal">Overhead waterfall — 224 min / 7d</h2>
+
+  <div class="waterfall reveal reveal-d1">
+    <div class="wf-row">
+      <span class="wf-label">codex-review</span>
+      <div class="wf-track"><div class="wf-fill" style="width:74%;"></div></div>
+      <span class="wf-val">165m (74%)</span>
+    </div>
+    <div class="wf-row">
+      <span class="wf-label">pytest</span>
+      <div class="wf-track"><div class="wf-fill" style="width:7%; background:var(--green);"></div></div>
+      <span class="wf-val">16m (7%)</span>
+    </div>
+    <div class="wf-row">
+      <span class="wf-label">audit-logger</span>
+      <div class="wf-track"><div class="wf-fill" style="width:6%; background:var(--blue);"></div></div>
+      <span class="wf-val">14m (6%)</span>
+    </div>
+    <div class="wf-row">
+      <span class="wf-label">guard-security</span>
+      <div class="wf-track"><div class="wf-fill" style="width:2.3%; background:var(--red);"></div></div>
+      <span class="wf-val">5m (2%)</span>
+    </div>
+    <div class="wf-row">
+      <span class="wf-label">lint-check</span>
+      <div class="wf-track"><div class="wf-fill" style="width:2.2%; background:var(--yellow);"></div></div>
+      <span class="wf-val">5m (2%)</span>
+    </div>
+    <div class="wf-row">
+      <span class="wf-label" style="color:var(--text-faint)">other (7)</span>
+      <div class="wf-track"><div class="wf-fill" style="width:9%; background:var(--text-faint);"></div></div>
+      <span class="wf-val">20m (9%)</span>
+    </div>
+  </div>
+</section>
+
+<!-- TERMINAL OUTPUT -->
+<section class="section wrap">
+  <div class="section-label reveal">Default report</div>
+  <h2 class="reveal">Actual terminal output</h2>
+
+  <div class="specimen reveal reveal-d1">
+    <span class="specimen-label">hooks-report.sh</span>
+    <div class="specimen-frame">
+      <pre><span class="s-line">══════════════════════════════════════════════════════════════</span>
+<span class="s-bold">  Hooks Status</span>
+<span class="s-line">══════════════════════════════════════════════════════════════</span>
+  24h: <span class="s-bold">5114 runs</span> | <span class="s-accent">9 min</span> overhead · 2026-04-12 17:11
+
+  Reliability      <span class="s-green">✅</span>                  Performance      <span class="s-green">✅</span>
+  Broken Hooks     <span class="s-green">✅</span>                  Regressions      <span class="s-green">✅</span>
+  Review Gate      <span class="s-green">✅</span>  38% finding rate (13 runs)
+<span class="s-line">──────────────────────────────────────────────────────────────</span>
+<span class="s-dim">  Where Time Goes (last 7d — 73 min total)</span>
+
+  codex-review     <span class="s-accent">█████████</span><span class="s-dim">░░░░░░░░░░░░░░░░░░░░░</span>  21 min  (29%)
+  audit-logger     <span class="s-accent">██████</span><span class="s-dim">░░░░░░░░░░░░░░░░░░░░░░░░</span>  14 min  (19%)
+  pytest           <span class="s-accent">██████</span><span class="s-dim">░░░░░░░░░░░░░░░░░░░░░░░░</span>  14 min  (19%)
+  guard-security   <span class="s-accent">██</span><span class="s-dim">░░░░░░░░░░░░░░░░░░░░░░░░░░░░</span>   5 min   (7%)
+  lint-check       <span class="s-accent">██</span><span class="s-dim">░░░░░░░░░░░░░░░░░░░░░░░░░░░░</span>   5 min   (6%)
+
+  <span class="s-green">All clear — no action items.</span>
+<span class="s-line">──────────────────────────────────────────────────────────────</span>
+<span class="s-red">[REGR]</span>  stop-checks           <span class="s-red">██████████████</span>  1 fail  (was 0, new)
+<span class="s-yellow">[SLOW]</span>  type-check            112ms → 149ms avg  (+33.0%)
+<span class="s-dim">[MISSING]  block-destructive-gws — no runs in 7d (expected)</span>
+<span class="s-line">──────────────────────────────────────────────────────────────</span>
+<span class="s-bold">  Guardrails (last 7d)</span>
+
+ Guard                   Runs   Blk    Bl%    Avg  Top block reason
+ guard-security         13.2k    26   0.2%   22ms  <span class="s-red">Blocked: rm pattern</span>
+ guard-ts-typecheck      1155    24   2.1%   87ms  <span class="s-yellow">type errors</span>
+ guard-python-typecheck  1155    31   2.7%   96ms  <span class="s-yellow">type errors</span>
+ guard-python-lint       1155    99   8.6%   75ms  <span class="s-yellow">ruff lint errors</span>
+ guard-auto-allow         988     0   0.0%   16ms
+<span class="s-line">══════════════════════════════════════════════════════════════</span>
+<span class="s-bold">  Advisor — Tuning Suggestions</span>
+
+  <span class="s-yellow">[OPTIMIZE]</span> pytest: Reliable but slow — optimize or add timeout
+         condition: 0% fail, 101898ms avg
+  <span class="s-yellow">[OPTIMIZE]</span> codex-review: Reliable but slow — optimize or add timeout
+         condition: 0% fail, 98096ms avg
+<span class="s-line">══════════════════════════════════════════════════════════════</span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- GUARDRAILS DETAIL -->
+<section class="section wrap">
+  <div class="section-label reveal">Guardrails</div>
+  <h2 class="reveal">5 guards, 180 blocks this week</h2>
+
+  <div class="guards reveal reveal-d1">
+    <div class="guard-row guard-head">
+      <div>Guard</div>
+      <div class="hide-sm">Event</div>
+      <div style="text-align:right">Runs</div>
+      <div style="text-align:right">Blocks</div>
+      <div style="text-align:right">Avg</div>
+    </div>
+    <div class="guard-row">
+      <div>
+        <div class="g-name" style="color:var(--red)">guard-security</div>
+        <div class="g-sub">Destructive commands + .env reads</div>
+      </div>
+      <div class="g-sub hide-sm">PreToolUse</div>
+      <div class="g-val">13.2k</div>
+      <div class="g-val" style="color:var(--red)">26</div>
+      <div class="g-val">22ms</div>
+    </div>
+    <div class="guard-row">
+      <div>
+        <div class="g-name" style="color:var(--yellow)">guard-python-lint</div>
+        <div class="g-sub">ruff check on .py Write/Edit</div>
+      </div>
+      <div class="g-sub hide-sm">PostToolUse</div>
+      <div class="g-val">1,155</div>
+      <div class="g-val" style="color:var(--yellow)">99</div>
+      <div class="g-val">75ms</div>
+    </div>
+    <div class="guard-row">
+      <div>
+        <div class="g-name" style="color:var(--yellow)">guard-python-typecheck</div>
+        <div class="g-sub">ty check on .py Write/Edit</div>
+      </div>
+      <div class="g-sub hide-sm">PostToolUse</div>
+      <div class="g-val">1,155</div>
+      <div class="g-val" style="color:var(--yellow)">31</div>
+      <div class="g-val">96ms</div>
+    </div>
+    <div class="guard-row">
+      <div>
+        <div class="g-name" style="color:var(--yellow)">guard-ts-typecheck</div>
+        <div class="g-sub">tsc --noEmit on .ts Write/Edit</div>
+      </div>
+      <div class="g-sub hide-sm">PostToolUse</div>
+      <div class="g-val">1,155</div>
+      <div class="g-val" style="color:var(--yellow)">24</div>
+      <div class="g-val">87ms</div>
+    </div>
+    <div class="guard-row">
+      <div>
+        <div class="g-name" style="color:var(--green)">guard-auto-allow</div>
+        <div class="g-sub">Auto-allows Read, Glob, Grep, LS</div>
+      </div>
+      <div class="g-sub hide-sm">PermissionReq</div>
+      <div class="g-val">988</div>
+      <div class="g-val">0</div>
+      <div class="g-val">16ms</div>
+    </div>
+  </div>
+
+  <div class="callout reveal">
+    Try <code>cat .env</code> in Claude Code — <strong>guard-security blocks it before execution.</strong>
+    The agent sees the block reason, self-corrects, and moves on. Then run
+    <code>hooks-report.sh --step guard-security</code> to see the block in the report.
+  </div>
+</section>
+
+<!-- JSON EXPORT -->
+<section class="section wrap">
+  <div class="section-label reveal">Export</div>
+  <h2 class="reveal">OTel-aligned JSON</h2>
+
+  <div class="data-two">
+    <div>
+      <p style="color:var(--text-sub); font-size:0.88rem; line-height:1.6; margin-bottom:1.25rem;" class="reveal">
+        Schema <code class="mono" style="color:var(--accent)">claude.hooks.trends/v1</code>. Metric names follow OpenTelemetry conventions. Pipe to Claude, Grafana, or any analysis tool.
+      </p>
+      <ul class="arch-list">
+        <li class="reveal">
+          <strong>Trend export</strong>
+          <span><code>--export</code> — WoW metrics, failure trends, latency changes, coverage gaps</span>
+        </li>
+        <li class="reveal reveal-d1">
+          <strong>Span export</strong>
+          <span><code>--export-spans</code> — OTLP/HTTP JSON. Ship to Jaeger, Honeycomb, Grafana Tempo</span>
+        </li>
+        <li class="reveal reveal-d2">
+          <strong>Privacy built in</strong>
+          <span>Hostnames hashed. Paths = basename only. Commands = first word. Override with <code>--include-sensitive</code></span>
+        </li>
+      </ul>
+    </div>
+    <div class="specimen reveal">
+      <span class="specimen-label">--export</span>
+      <div class="specimen-frame">
+        <pre>{
+  <span class="s-accent">"schema"</span>: <span class="s-green">"claude.hooks.trends/v1"</span>,
+  <span class="s-accent">"generated_at"</span>: <span class="s-green">"2026-04-12T21:12:06Z"</span>,
+  <span class="s-accent">"summary"</span>: {
+    <span class="s-accent">"current"</span>: {
+      <span class="s-accent">"claude.hooks.runs"</span>: <span class="s-bold">37162</span>,
+      <span class="s-accent">"claude.hooks.failures"</span>: <span class="s-bold">5</span>,
+      <span class="s-accent">"claude.hooks.failure_rate"</span>: <span class="s-bold">0.0</span>,
+      <span class="s-accent">"claude.hooks.overhead_ms"</span>: <span class="s-bold">13469890</span>
+    }
+  },
+  <span class="s-accent">"failure_trends"</span>: [
+    {
+      <span class="s-accent">"hook.step"</span>: <span class="s-green">"migration-check"</span>,
+      <span class="s-accent">"delta"</span>: <span class="s-bold">3</span>,
+      <span class="s-accent">"direction"</span>: <span class="s-red">"regression"</span>
+    }
+  ]
+}</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ARCHITECTURE -->
+<section class="section wrap">
+  <div class="section-label reveal">Architecture</div>
+  <h2 class="reveal">What's inside</h2>
+
+  <div class="numbers reveal reveal-d1">
+    <div class="num-item">
+      <div class="num-val" style="color:var(--blue)">29</div>
+      <div class="num-label">Python files</div>
+    </div>
+    <div class="num-item">
+      <div class="num-val" style="color:var(--green)">5,783</div>
+      <div class="num-label">Lines Python</div>
+    </div>
+    <div class="num-item">
+      <div class="num-val" style="color:var(--yellow)">579</div>
+      <div class="num-label">Lines Bash</div>
+    </div>
+    <div class="num-item">
+      <div class="num-val" style="color:var(--purple)">14+</div>
+      <div class="num-label">Report sections</div>
+    </div>
+  </div>
+
+  <div class="data-two" style="margin-top:2rem;">
+    <ul class="arch-list">
+      <li class="reveal">
+        <strong>Bash layer</strong>
+        <span><code>hook-metrics.sh</code> wraps every hook with <code>/usr/bin/time -p</code>. <code>db-init.sh</code> owns the SQLite schema. <code>audit-logger.sh</code> captures tool use.</span>
+      </li>
+      <li class="reveal reveal-d1">
+        <strong>Python report</strong>
+        <span><code>hooks_report/</code> — Rich 14.3.3 for terminal rendering. <code>static.py</code> renders 14+ sections. <code>advisor.py</code> generates tuning suggestions.</span>
+      </li>
+      <li class="reveal reveal-d2">
+        <strong>OTel export</strong>
+        <span><code>spans.py</code> + <code>otlp.py</code> — zero external deps. Full OTLP/HTTP JSON. Deterministic trace IDs from session.</span>
+      </li>
+    </ul>
+    <ul class="arch-list">
+      <li class="reveal">
+        <strong>Storage</strong>
+        <span><code>~/.claude/hooks.db</code> — SQLite with busy_timeout. <code>hook_metrics</code> + <code>audit_events</code> tables. 1% probabilistic pruning > 30 days.</span>
+      </li>
+      <li class="reveal reveal-d1">
+        <strong>Semantic exit codes</strong>
+        <span><code>codex-review</code>, <code>pytest</code>, <code>vitest</code> — exit 1 means findings, not failure. Tracked separately in reporting.</span>
+      </li>
+      <li class="reveal reveal-d2">
+        <strong>Privacy</strong>
+        <span>Host SHA256[:12]. Path basenames only. SQL injection prevention via <code>_sql_escape</code>. Stderr capped at 200 bytes.</span>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<!-- COMMANDS -->
+<section class="section wrap">
+  <div class="section-label reveal">Commands</div>
+  <h2 class="reveal">One script, many views</h2>
+
+  <div class="cmd-list reveal reveal-d1">
+    <div class="cmd-row">
+      <span class="cmd-code">hooks-report.sh</span>
+      <span class="cmd-desc">Traffic lights, waterfall, action items, trends, guardrails</span>
+    </div>
+    <div class="cmd-row">
+      <span class="cmd-code">--verbose</span>
+      <span class="cmd-desc">Adds perf table, WoW summary, top projects, reliability, repo dashboard</span>
+    </div>
+    <div class="cmd-row">
+      <span class="cmd-code">--export</span>
+      <span class="cmd-desc">OTel-aligned JSON — pipe to analysis tools or Claude</span>
+    </div>
+    <div class="cmd-row">
+      <span class="cmd-code">--export-spans</span>
+      <span class="cmd-desc">OTLP span JSON — ship to Jaeger, Grafana, Honeycomb</span>
+    </div>
+    <div class="cmd-row">
+      <span class="cmd-code">--step guard-security</span>
+      <span class="cmd-desc">Drill into a specific hook step</span>
+    </div>
+    <div class="cmd-row">
+      <span class="cmd-code">--sessions</span>
+      <span class="cmd-desc">Recent Claude Code sessions ranked by overhead</span>
+    </div>
+    <div class="cmd-row">
+      <span class="cmd-code">--export | claude -p "..."</span>
+      <span class="cmd-desc">Pipe telemetry to Claude for natural-language analysis</span>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="wrap">
+    <div class="footer-inner">
+      <div class="logo">cc-hooks<span>-metrics</span></div>
+      <div class="meta">
+        Built with Claude Code. Instrumented by its own hooks.
+        &nbsp;&middot;&nbsp;
+        <a href="index.html">Home</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); }});
+  }, { threshold: 0.12, rootMargin: '0px 0px -30px 0px' });
+  document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+}
+</script>
+
+</body>
+</html>

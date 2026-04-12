@@ -8,591 +8,105 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
 <style>
   /* ═══════════════════════════════════════
-     THEME — warm observatory
+     INDEX-SPECIFIC OVERRIDES
      ═══════════════════════════════════════ */
-  :root {
-    color-scheme: dark light;
 
-    /* Palette: dark */
-    --bg:           #0f0f0f;
-    --bg-raised:    #1a1a18;
-    --bg-inset:     #090908;
-    --border:       #2a2a26;
-    --text:         #ece8e0;
-    --text-sub:     #9e9a90;
-    --text-faint:   #5c5952;
-    --accent:       #e09832;
-    --accent-dim:   #b87a24;
-    --accent-bg:    rgba(224,152,50,0.08);
-    --red:          #e5534b;
-    --green:        #57ab5a;
-    --yellow:       #c69026;
-    --blue:         #539bf5;
-    --code-bg:      #141412;
-  }
+  /* More spacious sections for marketing */
+  .section { padding-block: clamp(4rem, 10vh, 7rem); }
+  .section h2 { font-size: clamp(1.6rem, 3vw, 2.4rem); max-width: 22ch; }
 
-  @media (prefers-color-scheme: light) {
-    :root {
-      --bg:           #f6f3ed;
-      --bg-raised:    #ffffff;
-      --bg-inset:     #edeae3;
-      --border:       #d4d0c8;
-      --text:         #1a1916;
-      --text-sub:     #5c5952;
-      --text-faint:   #9e9a90;
-      --accent:       #c07b18;
-      --accent-dim:   #9e6510;
-      --accent-bg:    rgba(192,123,24,0.06);
-      --red:          #cc3d35;
-      --green:        #347d39;
-      --yellow:       #a67612;
-      --blue:         #3574c2;
-      --code-bg:      #edeae3;
-    }
-  }
+  /* Larger ticker for hero impact */
+  .ticker-val { font-size: clamp(1.6rem, 2.5vw, 2.2rem); }
+  .ticker { padding-top: clamp(2rem, 4vh, 3rem); margin-top: clamp(2rem, 4vh, 3rem); }
 
-  /* ═══════════════════════════════════════
-     RESET + BASE
-     ═══════════════════════════════════════ */
-  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
-  body {
-    font-family: 'Space Grotesk', system-ui, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    line-height: 1.55;
-    -webkit-font-smoothing: antialiased;
-    overflow-x: hidden;
-  }
-
-  ::selection {
-    background: var(--accent);
-    color: var(--bg);
-  }
-
-  /* ═══════════════════════════════════════
-     UTILITY
-     ═══════════════════════════════════════ */
-  .wrap {
-    max-width: 1120px;
-    margin: 0 auto;
-    padding-inline: clamp(1.25rem, 4vw, 3rem);
-  }
-
-  .mono {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.88em;
-  }
-
-  .accent { color: var(--accent); }
-  .sub    { color: var(--text-sub); }
-  .faint  { color: var(--text-faint); }
-
-  /* ═══════════════════════════════════════
-     NAV
-     ═══════════════════════════════════════ */
-  nav {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 100;
-    padding: 1rem 0;
-    background: color-mix(in oklch, var(--bg) 85%, transparent);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border-bottom: 1px solid var(--border);
-  }
-  nav .wrap {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  nav .logo {
-    font-weight: 700;
-    font-size: 0.95rem;
-    letter-spacing: -0.02em;
-    text-decoration: none;
-    color: var(--text);
-  }
-  nav .logo span { color: var(--accent); }
-  nav .links {
-    display: flex;
-    gap: 1.5rem;
-    align-items: center;
-    list-style: none;
-  }
-  nav .links a {
-    color: var(--text-sub);
-    text-decoration: none;
-    font-size: 0.85rem;
-    font-weight: 500;
-    transition: color 0.15s;
-  }
-  nav .links a:hover { color: var(--text); }
-  nav .links .gh {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.4rem 0.9rem;
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    font-size: 0.82rem;
-    transition: border-color 0.15s;
-  }
-  nav .links .gh:hover { border-color: var(--text-sub); }
-
-  /* ═══════════════════════════════════════
-     HERO — asymmetric, editorial
-     ═══════════════════════════════════════ */
-  .hero {
-    padding-top: clamp(7rem, 16vh, 11rem);
-    padding-bottom: clamp(3rem, 8vh, 5rem);
-  }
+  /* Hero — asymmetric 2-col */
+  .hero { padding-top: clamp(7rem, 16vh, 11rem); padding-bottom: clamp(3rem, 8vh, 5rem); }
+  .hero h1 { font-size: clamp(2.4rem, 5.5vw, 4rem); line-height: 1.08; max-width: 14ch; }
   .hero-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: clamp(2rem, 4vw, 4rem);
-    align-items: end;
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: clamp(2rem, 4vw, 4rem); align-items: end;
   }
-  @media (max-width: 768px) {
-    .hero-grid { grid-template-columns: 1fr; }
-  }
+  .hero-right { max-width: 420px; }
+  .hero-right p { font-size: clamp(1rem, 1.2vw, 1.15rem); color: var(--text-sub); margin-bottom: 1.75rem; line-height: 1.6; }
+  @media (max-width: 768px) { .hero-grid { grid-template-columns: 1fr; } }
 
-  .hero h1 {
-    font-size: clamp(2.4rem, 5.5vw, 4rem);
-    font-weight: 700;
-    line-height: 1.08;
-    letter-spacing: -0.035em;
-    max-width: 14ch;
-  }
-  .hero-right {
-    max-width: 420px;
-  }
-  .hero-right p {
-    font-size: clamp(1rem, 1.2vw, 1.15rem);
-    color: var(--text-sub);
-    margin-bottom: 1.75rem;
-    line-height: 1.6;
-  }
-
-  /* Ticker strip */
-  .ticker {
-    display: flex;
-    gap: clamp(1.5rem, 3vw, 3rem);
-    padding-top: clamp(2rem, 4vh, 3rem);
-    margin-top: clamp(2rem, 4vh, 3rem);
-    border-top: 1px solid var(--border);
-    flex-wrap: wrap;
-  }
-  .ticker-item {
-    display: flex;
-    flex-direction: column;
-  }
-  .ticker-val {
-    font-size: clamp(1.6rem, 2.5vw, 2.2rem);
-    font-weight: 700;
-    letter-spacing: -0.03em;
-    line-height: 1.2;
-  }
-  .ticker-label {
-    font-size: 0.72rem;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text-faint);
-    margin-top: 0.2rem;
-  }
-
-  /* ═══════════════════════════════════════
-     INSTALL STRIP
-     ═══════════════════════════════════════ */
-  .install-strip {
-    padding: 1.5rem 0;
-    border-top: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
-  }
-  .install-strip .wrap {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    flex-wrap: wrap;
-  }
+  /* Install strip */
+  .install-strip { padding: 1.5rem 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .install-strip .wrap { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
   .install-strip .label {
-    font-size: 0.72rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--text-faint);
-    flex-shrink: 0;
+    font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.1em; color: var(--text-faint); flex-shrink: 0;
   }
   .install-cmd {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.85rem;
-    color: var(--accent);
-    background: var(--accent-bg);
-    padding: 0.5rem 1rem;
-    border-radius: 4px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem;
+    color: var(--accent); background: var(--accent-bg);
+    padding: 0.5rem 1rem; border-radius: 4px;
     border: 1px solid color-mix(in oklch, var(--accent) 20%, transparent);
-    user-select: all;
-    cursor: text;
-    flex: 1;
-    min-width: 0;
-    overflow-x: auto;
-    white-space: nowrap;
+    user-select: all; cursor: text; flex: 1; min-width: 0;
+    overflow-x: auto; white-space: nowrap;
   }
 
-  /* ═══════════════════════════════════════
-     SECTION RHYTHM
-     ═══════════════════════════════════════ */
-  .section {
-    padding-block: clamp(4rem, 10vh, 7rem);
-  }
-  .section-label {
-    font-size: 0.68rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
-    color: var(--accent);
-    margin-bottom: 0.75rem;
-  }
-  .section h2 {
-    font-size: clamp(1.6rem, 3vw, 2.4rem);
-    font-weight: 700;
-    letter-spacing: -0.03em;
-    line-height: 1.15;
-    max-width: 22ch;
-    margin-bottom: clamp(1rem, 2vh, 1.75rem);
-  }
-  .section-lead {
-    font-size: clamp(0.95rem, 1.1vw, 1.05rem);
-    color: var(--text-sub);
-    max-width: 52ch;
-    line-height: 1.65;
-  }
-
-  /* ═══════════════════════════════════════
-     PROBLEM — editorial two-col
-     ═══════════════════════════════════════ */
+  /* Problem grid */
   .problem-grid {
-    display: grid;
-    grid-template-columns: 0.4fr 0.6fr;
-    gap: clamp(2rem, 5vw, 5rem);
-    margin-top: clamp(2rem, 4vh, 3rem);
+    display: grid; grid-template-columns: 0.4fr 0.6fr;
+    gap: clamp(2rem, 5vw, 5rem); margin-top: clamp(2rem, 4vh, 3rem);
   }
-  @media (max-width: 768px) {
-    .problem-grid { grid-template-columns: 1fr; }
-  }
-  .problem-list {
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-  }
-  .problem-list li {
-    padding-left: 1.25rem;
-    border-left: 2px solid var(--border);
-    transition: border-color 0.2s;
-  }
-  .problem-list li:hover {
-    border-left-color: var(--accent);
-  }
-  .problem-list strong {
-    display: block;
-    font-size: 0.9rem;
-    margin-bottom: 0.2rem;
-  }
-  .problem-list span {
-    font-size: 0.82rem;
-    color: var(--text-sub);
-    line-height: 1.55;
-  }
+  @media (max-width: 768px) { .problem-grid { grid-template-columns: 1fr; } }
+  .problem-list { list-style: none; display: flex; flex-direction: column; gap: 1.5rem; }
+  .problem-list li { padding-left: 1.25rem; border-left: 2px solid var(--border); transition: border-color 0.2s; }
+  .problem-list li:hover { border-left-color: var(--accent); }
+  .problem-list strong { display: block; font-size: 0.9rem; margin-bottom: 0.2rem; }
+  .problem-list span { font-size: 0.82rem; color: var(--text-sub); line-height: 1.55; }
 
-  /* ═══════════════════════════════════════
-     PIPELINE — horizontal step flow
-     ═══════════════════════════════════════ */
-  .pipeline {
-    display: flex;
-    gap: 0;
-    margin-top: clamp(2.5rem, 5vh, 4rem);
-    overflow-x: auto;
-    padding-bottom: 0.5rem;
-  }
+  /* Pipeline */
+  .pipeline { display: flex; gap: 0; margin-top: clamp(2.5rem, 5vh, 4rem); overflow-x: auto; padding-bottom: 0.5rem; }
   .pipe-step {
-    flex: 1;
-    min-width: 140px;
-    padding: 1.25rem 1rem;
-    border: 1px solid var(--border);
-    border-right: none;
-    position: relative;
-    transition: background 0.2s;
+    flex: 1; min-width: 140px; padding: 1.25rem 1rem;
+    border: 1px solid var(--border); border-right: none;
+    position: relative; transition: background 0.2s;
   }
   .pipe-step:first-child { border-radius: 6px 0 0 6px; }
   .pipe-step:last-child  { border-radius: 0 6px 6px 0; border-right: 1px solid var(--border); }
   .pipe-step:hover { background: var(--bg-raised); }
   .pipe-step::after {
-    content: '';
-    position: absolute;
-    right: -1px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 0;
-    height: 0;
-    border-top: 6px solid transparent;
-    border-bottom: 6px solid transparent;
-    border-left: 6px solid var(--border);
-    z-index: 1;
+    content: ''; position: absolute; right: -1px; top: 50%; transform: translateY(-50%);
+    width: 0; height: 0; border-top: 6px solid transparent;
+    border-bottom: 6px solid transparent; border-left: 6px solid var(--border); z-index: 1;
   }
   .pipe-step:last-child::after { display: none; }
-  .pipe-num {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.68rem;
-    color: var(--accent);
-    font-weight: 500;
-    margin-bottom: 0.5rem;
-  }
-  .pipe-name {
-    font-size: 0.85rem;
-    font-weight: 600;
-    margin-bottom: 0.2rem;
-  }
-  .pipe-desc {
-    font-size: 0.72rem;
-    color: var(--text-sub);
-    line-height: 1.45;
-  }
+  .pipe-num { font-family: 'IBM Plex Mono', monospace; font-size: 0.68rem; color: var(--accent); font-weight: 500; margin-bottom: 0.5rem; }
+  .pipe-name { font-size: 0.85rem; font-weight: 600; margin-bottom: 0.2rem; }
+  .pipe-desc { font-size: 0.72rem; color: var(--text-sub); line-height: 1.45; }
 
-  /* ═══════════════════════════════════════
-     SPECIMEN — the report as artifact
-     ═══════════════════════════════════════ */
-  .specimen {
-    margin-top: clamp(2.5rem, 5vh, 4rem);
-    position: relative;
+  /* Export grid */
+  .export-grid {
+    display: grid; grid-template-columns: 1fr 1.2fr;
+    gap: clamp(2rem, 4vw, 4rem); align-items: start; margin-top: clamp(2rem, 4vh, 3rem);
   }
-  .specimen-label {
-    position: absolute;
-    top: -0.6rem;
-    left: 1.5rem;
-    font-size: 0.65rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: var(--accent);
-    background: var(--bg);
-    padding: 0 0.5rem;
-    z-index: 1;
-  }
-  .specimen-frame {
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    overflow: hidden;
-  }
-  .specimen-frame pre {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: clamp(0.68rem, 0.85vw, 0.78rem);
-    line-height: 1.55;
-    padding: clamp(1.25rem, 2vw, 2rem);
-    overflow-x: auto;
-    background: var(--code-bg);
-    color: var(--text);
-  }
-  .s-dim    { color: var(--text-faint); }
-  .s-accent { color: var(--accent); }
-  .s-green  { color: var(--green); }
-  .s-red    { color: var(--red); }
-  .s-yellow { color: var(--yellow); }
-  .s-blue   { color: var(--blue); }
-  .s-bold   { font-weight: 500; }
-  .s-line   { color: var(--border); }
+  @media (max-width: 768px) { .export-grid { grid-template-columns: 1fr; } }
+  .export-features { list-style: none; display: flex; flex-direction: column; gap: 1.25rem; margin-top: 1rem; }
+  .export-features li { font-size: 0.88rem; line-height: 1.55; }
+  .export-features li strong { display: block; font-size: 0.82rem; }
+  .export-features li span { color: var(--text-sub); font-size: 0.82rem; }
 
-  /* ═══════════════════════════════════════
-     GUARDRAILS — stacked rows
-     ═══════════════════════════════════════ */
-  .guards {
-    margin-top: clamp(2rem, 4vh, 3rem);
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    background: var(--border);
-    border-radius: 6px;
-    overflow: hidden;
-  }
-  .guard-row {
-    display: grid;
-    grid-template-columns: 1fr 120px 70px 70px;
-    gap: 1rem;
-    padding: 1rem 1.25rem;
-    background: var(--bg);
-    align-items: center;
-    transition: background 0.15s;
-  }
-  .guard-row:hover { background: var(--bg-raised); }
+  /* Guard table — 4-col marketing layout */
+  .guard-row { grid-template-columns: 1fr 120px 70px 70px; }
   @media (max-width: 600px) {
     .guard-row { grid-template-columns: 1fr auto; }
     .guard-row .hide-sm { display: none; }
   }
-  .guard-name {
-    font-weight: 600;
-    font-size: 0.88rem;
-  }
-  .guard-event {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.72rem;
-    color: var(--text-faint);
-  }
-  .guard-stat {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.82rem;
-    text-align: right;
-  }
-  .guard-head {
-    font-size: 0.68rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text-faint);
-  }
-  .guard-head.guard-row { padding-block: 0.6rem; }
 
-  /* ═══════════════════════════════════════
-     HOW IT STOPS BAD CODE — callout
-     ═══════════════════════════════════════ */
-  .callout {
-    margin-top: clamp(2rem, 4vh, 3rem);
-    padding: clamp(1.5rem, 3vw, 2rem);
-    border-left: 3px solid var(--accent);
-    background: var(--accent-bg);
-    border-radius: 0 6px 6px 0;
+  /* CTA link */
+  .cta-link {
+    display: inline-block; margin-top: 1.5rem;
+    font-size: 0.85rem; font-weight: 600; color: var(--accent);
+    text-decoration: none; transition: opacity 0.15s;
   }
-  .callout p {
-    font-size: 0.88rem;
-    color: var(--text-sub);
-    line-height: 1.6;
-  }
-  .callout strong { color: var(--text); }
-  .callout code {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.84em;
-    color: var(--accent);
-  }
-
-  /* ═══════════════════════════════════════
-     EXPORT — side by side
-     ═══════════════════════════════════════ */
-  .export-grid {
-    display: grid;
-    grid-template-columns: 1fr 1.2fr;
-    gap: clamp(2rem, 4vw, 4rem);
-    align-items: start;
-    margin-top: clamp(2rem, 4vh, 3rem);
-  }
-  @media (max-width: 768px) {
-    .export-grid { grid-template-columns: 1fr; }
-  }
-  .export-features {
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
-    margin-top: 1rem;
-  }
-  .export-features li {
-    font-size: 0.88rem;
-    line-height: 1.55;
-  }
-  .export-features li strong {
-    display: block;
-    font-size: 0.82rem;
-  }
-  .export-features li span {
-    color: var(--text-sub);
-    font-size: 0.82rem;
-  }
-
-  /* ═══════════════════════════════════════
-     COMMANDS — compact list
-     ═══════════════════════════════════════ */
-  .cmd-list {
-    margin-top: clamp(2rem, 4vh, 3rem);
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-  }
-  .cmd-row {
-    display: grid;
-    grid-template-columns: 1fr 1.5fr;
-    gap: 2rem;
-    padding: 0.9rem 0;
-    border-bottom: 1px solid var(--border);
-    align-items: baseline;
-  }
-  .cmd-row:first-child { border-top: 1px solid var(--border); }
-  @media (max-width: 600px) {
-    .cmd-row { grid-template-columns: 1fr; gap: 0.3rem; }
-  }
-  .cmd-code {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.82rem;
-    color: var(--accent);
-  }
-  .cmd-what {
-    font-size: 0.82rem;
-    color: var(--text-sub);
-  }
-
-  /* ═══════════════════════════════════════
-     FOOTER
-     ═══════════════════════════════════════ */
-  footer {
-    padding: clamp(3rem, 6vh, 5rem) 0;
-    border-top: 1px solid var(--border);
-  }
-  .footer-grid {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: 1rem;
-  }
-  footer .logo {
-    font-weight: 700;
-    font-size: 0.9rem;
-    letter-spacing: -0.02em;
-  }
-  footer .logo span { color: var(--accent); }
-  footer .meta {
-    font-size: 0.75rem;
-    color: var(--text-faint);
-  }
-  footer a {
-    color: var(--text-sub);
-    text-decoration: none;
-    transition: color 0.15s;
-  }
-  footer a:hover { color: var(--text); }
-
-  /* ═══════════════════════════════════════
-     ENTRANCE MOTION
-     ═══════════════════════════════════════ */
-  @media (prefers-reduced-motion: no-preference) {
-    .reveal {
-      opacity: 0;
-      transform: translateY(20px);
-      transition: opacity 0.6s ease, transform 0.6s ease;
-    }
-    .reveal.visible {
-      opacity: 1;
-      transform: translateY(0);
-    }
-    .reveal-delay-1 { transition-delay: 0.1s; }
-    .reveal-delay-2 { transition-delay: 0.2s; }
-    .reveal-delay-3 { transition-delay: 0.3s; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .reveal { opacity: 1; transform: none; }
-  }
+  .cta-link:hover { opacity: 0.8; }
+  .cta-link::after { content: ' \2192'; }
 </style>
 <noscript><style>.reveal { opacity: 1 !important; transform: none !important; }</style></noscript>
 </head>
@@ -603,6 +117,7 @@
   <div class="wrap">
     <a class="logo" href="#">cc-hooks<span>-metrics</span></a>
     <ul class="links">
+      <li><a href="demo.html">Demo</a></li>
       <li><a href="#how">How it works</a></li>
       <li><a href="#guardrails">Guardrails</a></li>
       <li><a href="#export">Export</a></li>
@@ -621,10 +136,10 @@
       <h1 class="reveal">See what your AI agent is&nbsp;doing</h1>
     </div>
     <div class="hero-right">
-      <p class="reveal reveal-delay-1">Observability, guardrails, and telemetry for Claude Code. Every hook run timed, every guardrail block tracked, every regression caught — stored in SQLite, reported in your terminal.</p>
+      <p class="reveal reveal-d1">Observability, guardrails, and telemetry for Claude Code. Every hook run timed, every guardrail block tracked, every regression caught — stored in SQLite, reported in your terminal.</p>
     </div>
   </div>
-  <div class="ticker reveal reveal-delay-2">
+  <div class="ticker reveal reveal-d2">
     <div class="ticker-item">
       <span class="ticker-val">37,141</span>
       <span class="ticker-label">Hook runs / week</span>
@@ -661,7 +176,7 @@
   <div class="problem-grid">
     <div>
       <div class="section-label reveal">The problem</div>
-      <h2 class="reveal reveal-delay-1">AI agents operate in the&nbsp;dark</h2>
+      <h2 class="reveal reveal-d1">AI agents operate in the&nbsp;dark</h2>
     </div>
     <div>
       <ul class="problem-list">
@@ -669,11 +184,11 @@
           <strong>No visibility</strong>
           <span>Claude Code runs shell commands, edits files, spawns subagents. You see the output. You don't see the timing, failures, or patterns behind it.</span>
         </li>
-        <li class="reveal reveal-delay-1">
+        <li class="reveal reveal-d1">
           <strong>No guardrails</strong>
           <span>Without active checks, an agent can <code class="mono">rm -rf</code>, commit broken types, or read your <code class="mono">.env</code>. You find out after the damage.</span>
         </li>
-        <li class="reveal reveal-delay-2">
+        <li class="reveal reveal-d2">
           <strong>No trend data</strong>
           <span>Hook latency creeps up. Steps start timing out. Failure rates spike. Without week-over-week telemetry, you're debugging symptoms, not causes.</span>
         </li>
@@ -686,9 +201,9 @@
 <section class="section wrap" id="how">
   <div class="section-label reveal">How it works</div>
   <h2 class="reveal">Wrap every hook.<br>Store every run.<br>Report what matters.</h2>
-  <p class="section-lead reveal reveal-delay-1">A passthrough shell wrapper captures wall-clock timing, exit codes, git context, and stderr for every Claude Code hook event. Data goes to a local SQLite database. A Python report turns it into actionable insight.</p>
+  <p class="section-lead reveal reveal-d1">A passthrough shell wrapper captures wall-clock timing, exit codes, git context, and stderr for every Claude Code hook event. Data goes to a local SQLite database. A Python report turns it into actionable insight.</p>
 
-  <div class="pipeline reveal reveal-delay-2">
+  <div class="pipeline reveal reveal-d2">
     <div class="pipe-step">
       <div class="pipe-num">01</div>
       <div class="pipe-name">Claude Code event</div>
@@ -717,57 +232,21 @@
   </div>
 </section>
 
-<!-- THE REPORT -->
+<!-- THE REPORT — brief, links to demo -->
 <section class="section wrap" id="report">
   <div class="section-label reveal">The report</div>
   <h2 class="reveal">35 lines. Everything you need.</h2>
-  <p class="section-lead reveal reveal-delay-1">Traffic lights for health at a glance. A waterfall showing where time goes. Action items telling you exactly what to fix. Week-over-week trends catching regressions before they compound.</p>
-
-  <div class="specimen reveal reveal-delay-2">
-    <span class="specimen-label">Live output</span>
-    <div class="specimen-frame">
-      <pre><span class="s-line">══════════════════════════════════════════════════════════════</span>
-<span class="s-bold">  Hooks Status</span>
-<span class="s-line">══════════════════════════════════════════════════════════════</span>
-  24h: <span class="s-bold">5114 runs</span> | <span class="s-accent">9 min</span> overhead · 2026-04-12 17:11
-
-  Reliability      <span class="s-green">✅</span>                  Performance      <span class="s-green">✅</span>
-  Broken Hooks     <span class="s-green">✅</span>                  Regressions      <span class="s-green">✅</span>
-  Review Gate      <span class="s-green">✅</span>  38% finding rate (13 runs)
-<span class="s-line">──────────────────────────────────────────────────────────────</span>
-<span class="s-dim">  Where Time Goes (last 7d — 73 min total)</span>
-
-  codex-review     <span class="s-accent">█████████</span><span class="s-dim">░░░░░░░░░░░░░░░░░░░░░</span>  21 min  (29%)
-  audit-logger     <span class="s-accent">██████</span><span class="s-dim">░░░░░░░░░░░░░░░░░░░░░░░░</span>  14 min  (19%)
-  pytest           <span class="s-accent">██████</span><span class="s-dim">░░░░░░░░░░░░░░░░░░░░░░░░</span>  14 min  (19%)
-  guard-security   <span class="s-accent">██</span><span class="s-dim">░░░░░░░░░░░░░░░░░░░░░░░░░░░░</span>   5 min   (7%)
-  lint-check       <span class="s-accent">██</span><span class="s-dim">░░░░░░░░░░░░░░░░░░░░░░░░░░░░</span>   5 min   (6%)
-
-  <span class="s-green">All clear — no action items.</span>
-<span class="s-line">──────────────────────────────────────────────────────────────</span>
-<span class="s-red">[REGR]</span>  stop-checks           <span class="s-red">██████████████</span>  1 fail  (was 0, new)
-<span class="s-yellow">[SLOW]</span>  type-check            112ms → 149ms avg  (+33.0%)
-<span class="s-line">──────────────────────────────────────────────────────────────</span>
-<span class="s-bold">  Guardrails (last 7d)</span>
-
- Guard                   Runs   Blk    Bl%    Avg  Top block reason
- guard-security         13.2k    26   0.2%   22ms  <span class="s-red">Blocked: rm pattern</span>
- guard-ts-typecheck      1155    24   2.1%   87ms  <span class="s-yellow">type errors</span>
- guard-python-typecheck  1155    31   2.7%   96ms  <span class="s-yellow">type errors</span>
- guard-python-lint       1155    99   8.6%   75ms  <span class="s-yellow">ruff lint errors</span>
- guard-auto-allow         988     0   0.0%   16ms
-<span class="s-line">══════════════════════════════════════════════════════════════</span></pre>
-    </div>
-  </div>
+  <p class="section-lead reveal reveal-d1">Traffic lights for health at a glance. A waterfall showing where time goes. Action items telling you exactly what to fix. Week-over-week trends catching regressions before they compound.</p>
+  <a href="demo.html" class="cta-link reveal reveal-d2">See live report output with real data</a>
 </section>
 
-<!-- GUARDRAILS -->
+<!-- GUARDRAILS — narrative focus, no stats table -->
 <section class="section wrap" id="guardrails">
   <div class="section-label reveal">Guardrails</div>
   <h2 class="reveal">The agent corrects itself<br>before bad code lands</h2>
-  <p class="section-lead reveal reveal-delay-1">Five scripts intercept Claude Code events in real time. Exit 2 blocks the action and sends stderr to the agent, which self-corrects and retries. No human intervention needed.</p>
+  <p class="section-lead reveal reveal-d1">Five scripts intercept Claude Code events in real time. Exit 2 blocks the action and sends stderr to the agent, which self-corrects and retries. No human intervention needed.</p>
 
-  <div class="guards reveal reveal-delay-2">
+  <div class="guards reveal reveal-d2">
     <div class="guard-row guard-head">
       <div>Guard</div>
       <div>Event</div>
@@ -776,53 +255,53 @@
     </div>
     <div class="guard-row">
       <div>
-        <div class="guard-name" style="color:var(--red);">guard-security</div>
-        <div class="guard-event">Blocks destructive commands + .env reads</div>
+        <div class="g-name" style="color:var(--red);">guard-security</div>
+        <div class="g-sub">Blocks destructive commands + .env reads</div>
       </div>
-      <div class="guard-event">PreToolUse</div>
-      <div class="guard-stat hide-sm" style="color:var(--red);">26</div>
-      <div class="guard-stat">22ms</div>
+      <div class="g-sub">PreToolUse</div>
+      <div class="g-val hide-sm" style="color:var(--red);">26</div>
+      <div class="g-val">22ms</div>
     </div>
     <div class="guard-row">
       <div>
-        <div class="guard-name" style="color:var(--yellow);">guard-python-lint</div>
-        <div class="guard-event">Runs ruff check on every .py write</div>
+        <div class="g-name" style="color:var(--yellow);">guard-python-lint</div>
+        <div class="g-sub">Runs ruff check on every .py write</div>
       </div>
-      <div class="guard-event">PostToolUse</div>
-      <div class="guard-stat hide-sm" style="color:var(--yellow);">99</div>
-      <div class="guard-stat">75ms</div>
+      <div class="g-sub">PostToolUse</div>
+      <div class="g-val hide-sm" style="color:var(--yellow);">99</div>
+      <div class="g-val">75ms</div>
     </div>
     <div class="guard-row">
       <div>
-        <div class="guard-name" style="color:var(--yellow);">guard-python-typecheck</div>
-        <div class="guard-event">Runs ty check on every .py write</div>
+        <div class="g-name" style="color:var(--yellow);">guard-python-typecheck</div>
+        <div class="g-sub">Runs ty check on every .py write</div>
       </div>
-      <div class="guard-event">PostToolUse</div>
-      <div class="guard-stat hide-sm" style="color:var(--yellow);">31</div>
-      <div class="guard-stat">96ms</div>
+      <div class="g-sub">PostToolUse</div>
+      <div class="g-val hide-sm" style="color:var(--yellow);">31</div>
+      <div class="g-val">96ms</div>
     </div>
     <div class="guard-row">
       <div>
-        <div class="guard-name" style="color:var(--yellow);">guard-ts-typecheck</div>
-        <div class="guard-event">Runs tsc --noEmit on every .ts write</div>
+        <div class="g-name" style="color:var(--yellow);">guard-ts-typecheck</div>
+        <div class="g-sub">Runs tsc --noEmit on every .ts write</div>
       </div>
-      <div class="guard-event">PostToolUse</div>
-      <div class="guard-stat hide-sm" style="color:var(--yellow);">24</div>
-      <div class="guard-stat">87ms</div>
+      <div class="g-sub">PostToolUse</div>
+      <div class="g-val hide-sm" style="color:var(--yellow);">24</div>
+      <div class="g-val">87ms</div>
     </div>
     <div class="guard-row">
       <div>
-        <div class="guard-name" style="color:var(--green);">guard-auto-allow</div>
-        <div class="guard-event">Auto-allows read-only tools (Read, Glob, Grep)</div>
+        <div class="g-name" style="color:var(--green);">guard-auto-allow</div>
+        <div class="g-sub">Auto-allows read-only tools (Read, Glob, Grep)</div>
       </div>
-      <div class="guard-event">PermissionReq</div>
-      <div class="guard-stat hide-sm">0</div>
-      <div class="guard-stat">16ms</div>
+      <div class="g-sub">PermissionReq</div>
+      <div class="g-val hide-sm">0</div>
+      <div class="g-val">16ms</div>
     </div>
   </div>
 
   <div class="callout reveal">
-    <p>Try <code>cat .env</code> in a Claude Code session. <strong>guard-security blocks it before it executes.</strong> The agent sees the block reason, adjusts, and moves on. Then run <code>hooks-report.sh --step guard-security</code> to see every block in the report.</p>
+    Try <code>cat .env</code> in a Claude Code session. <strong>guard-security blocks it before it executes.</strong> The agent sees the block reason, adjusts, and moves on. Then run <code>hooks-report.sh --step guard-security</code> to see every block in the report.
   </div>
 </section>
 
@@ -839,11 +318,11 @@
           <strong>Hook spans <span class="mono accent">hook.{step}</span></strong>
           <span>Kind: CLIENT. Duration, exit code, branch, commit, repo, stderr snippet on failure.</span>
         </li>
-        <li class="reveal reveal-delay-1">
+        <li class="reveal reveal-d1">
           <strong>Tool spans <span class="mono accent">tool.{name}</span></strong>
           <span>Kind: INTERNAL. From audit_events. Redacted inputs by default.</span>
         </li>
-        <li class="reveal reveal-delay-2">
+        <li class="reveal reveal-d2">
           <strong>Automatic redaction</strong>
           <span>Hostnames hashed (SHA256[:12]). Paths reduced to basename. Commands to first word. Override with <code class="mono">--include-sensitive</code>.</span>
         </li>
@@ -874,67 +353,29 @@
   </div>
 </section>
 
-<!-- COMMANDS -->
-<section class="section wrap" id="commands">
-  <div class="section-label reveal">Commands</div>
-  <h2 class="reveal">One script, many views</h2>
-
-  <div class="cmd-list reveal reveal-delay-1">
-    <div class="cmd-row">
-      <div class="cmd-code">hooks-report.sh</div>
-      <div class="cmd-what">Traffic lights, waterfall, action items, trends, guardrails</div>
-    </div>
-    <div class="cmd-row">
-      <div class="cmd-code">--verbose</div>
-      <div class="cmd-what">Adds perf table, WoW summary, top projects, per-step reliability, repo dashboard</div>
-    </div>
-    <div class="cmd-row">
-      <div class="cmd-code">--export</div>
-      <div class="cmd-what">OTel-aligned JSON — pipe to analysis tools or Claude</div>
-    </div>
-    <div class="cmd-row">
-      <div class="cmd-code">--export-spans</div>
-      <div class="cmd-what">OTLP span JSON — ship to Jaeger, Grafana, Honeycomb</div>
-    </div>
-    <div class="cmd-row">
-      <div class="cmd-code">--step guard-security</div>
-      <div class="cmd-what">Drill into a specific hook step — every run, block, and timing</div>
-    </div>
-    <div class="cmd-row">
-      <div class="cmd-code">--sessions</div>
-      <div class="cmd-what">View recent Claude Code sessions ranked by overhead</div>
-    </div>
-    <div class="cmd-row">
-      <div class="cmd-code">--export | claude -p "..."</div>
-      <div class="cmd-what">Pipe telemetry to Claude for natural-language analysis</div>
-    </div>
-  </div>
-</section>
-
 <!-- FOOTER -->
 <footer>
   <div class="wrap">
-    <div class="footer-grid">
+    <div class="footer-inner">
       <div>
         <div class="logo">cc-hooks<span>-metrics</span></div>
       </div>
       <div class="meta">
         Built with Claude Code. Instrumented by its own hooks.
-        &nbsp;·&nbsp;
-        <a href="demo.html">Demo</a>
+        &nbsp;&middot;&nbsp;
+        <a href="demo.html">Live demo</a>
       </div>
     </div>
   </div>
 </footer>
 
 <script>
-  // Intersection Observer for scroll reveals
-  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    const obs = new IntersectionObserver((entries) => {
-      entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); }});
-    }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
-    document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
-  }
+if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); }});
+  }, { threshold: 0.12, rootMargin: '0px 0px -30px 0px' });
+  document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+}
 </script>
 
 </body>

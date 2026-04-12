@@ -38,7 +38,8 @@ def parse_cc_version(version_string: str) -> tuple[int, ...] | None:
 **`install.sh`** — new preflight step after Python check:
 ```bash
 # Phase 0.5: Claude Code version
-if ! cc_version=$(claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1) || [[ -z "$cc_version" ]]; then
+cc_version=$(claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+if [[ -z "$cc_version" ]]; then
     warn "Could not detect Claude Code version — skipping check"
 elif version_lt "$cc_version" "$MIN_CC_VERSION"; then
     die "Claude Code $cc_version is below minimum $MIN_CC_VERSION"

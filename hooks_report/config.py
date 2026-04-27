@@ -36,6 +36,7 @@ STEP_TIMEOUTS: dict[str, int] = {  # milliseconds — max recorded + 20%, outlie
     "guard-python-typecheck": 30_000,
     "guard-ts-typecheck": 37_000,
     "guard-auto-allow": 5_000,
+    "guard-incoming-config": 5_000,
     # Husky git hooks (imported via JSONL)
     "pytest": 1_000_000,
     "vitest": 120_000,
@@ -53,7 +54,7 @@ STEP_TIMEOUTS: dict[str, int] = {  # milliseconds — max recorded + 20%, outlie
     "no-verify-check": 230,
 }
 SEMANTIC_EXIT_STEPS = {"codex-review", "vitest", "pytest", "commitlint", "lint-staged"}
-GUARDRAIL_STEPS = {"guard-security", "guard-python-lint", "guard-python-typecheck", "guard-ts-typecheck", "guard-auto-allow", "block-destructive-gws"}
+GUARDRAIL_STEPS = {"guard-security", "guard-python-lint", "guard-python-typecheck", "guard-ts-typecheck", "guard-auto-allow", "guard-incoming-config", "block-destructive-gws"}
 
 # Steps expected to run regularly — used for coverage gap detection
 # Derived from STEP_TIMEOUTS so there's only one list to maintain
@@ -100,6 +101,7 @@ SUMMARY_PERIODS = {"daily": 1, "weekly": 7}
 # OTLP export (Phase 5)
 OTLP_ENDPOINT_VAR = "HOOKS_METRICS_OTLP_ENDPOINT"
 OTLP_HEADERS_VAR = "HOOKS_METRICS_OTLP_HEADERS"
+OTLP_ALLOWED_HOSTS_VAR = "HOOKS_METRICS_OTLP_ALLOWED_HOSTS"
 OTLP_TIMEOUT_S = 10
 OTLP_SERVICE_NAME = "claude-hooks"
 OTLP_SERVICE_VERSION = "0.1.0"

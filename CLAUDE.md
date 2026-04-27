@@ -126,6 +126,23 @@ PYTHONPATH="$DIR" exec "$PYTHON" -m hooks_report "$@"
 2. Wire it in `~/.claude/settings.json` using `hook-metrics.sh EVENT:STEP_NAME /path/to/script`
 3. Add its timeout to `config.STEP_TIMEOUTS` in `hooks_report/config.py` if it has a configured timeout
 
+## Security & operations
+
+- [SECURITY.md](SECURITY.md) — OWASP Agentic Top 10 (2026) coverage table and honest limits.
+- [RUNBOOK.md](RUNBOOK.md) — kill-switch drill, audit-chain verification, archive policy.
+
+### Opt-in security toggles
+
+All default off; existing users see no behavior change unless enabled.
+
+- `HOOKS_AUDIT_CHAIN=1` — write tamper-evident chain (`prev_hash` + `row_hash`) into `audit_events`. Adds ~30-80ms per event (Python startup). Verify with `hooks-report.sh --verify-audit-chain`.
+- `HOOKS_METRICS_OTLP_ALLOWED_HOSTS=otel.local,otel.cloud` — restrict where the OTLP exporter may POST. Bare hostnames, no port, no scheme.
+- `GUARD_SECURITY_ALLOW=blocks_force_push_main,...` — skip specific `guard-security.py` predicates per-machine. Names are the function names in `guardrails/_patterns.py`.
+
+### CLI additions
+
+- `hooks-report.sh --verify-audit-chain` — walks `audit_events`, reports the first hash divergence (exit 1) or `OK` (exit 0). Pre-migration DBs return exit 0 with a note.
+
 ## Guardrails
 
 Optional guardrail scripts live in `guardrails/`. All use plain `python3` (stdlib only) for portability.

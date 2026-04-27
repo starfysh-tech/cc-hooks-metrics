@@ -1,5 +1,13 @@
 {
   "_doc": "Copy these entries into your settings.json hooks sections to enable guardrails. Each is wrapped by hook-metrics.sh for tracking.",
+  "SessionStart_guard-incoming-config": {
+    "_doc": "Audits .claude/settings.json + .mcp.json at session start for known supply-chain hazards (OWASP ASI04 / CVE-2025-59536 / CVE-2026-21852). Opt-in: only wire this if you frequently clone third-party repos.",
+    "hooks": [{
+      "type": "command",
+      "command": "$HOME/.claude/hooks/hook-metrics.sh SessionStart:guard-incoming-config python3 $HOME/.claude/hooks/guardrails/guard-incoming-config.py",
+      "timeout": 5
+    }]
+  },
   "PreToolUse_guard-security": {
     "hooks": [{
       "type": "command",

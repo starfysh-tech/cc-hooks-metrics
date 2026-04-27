@@ -78,7 +78,10 @@ cc_version=$(claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | 
 if [[ -z "$cc_version" ]]; then
   warn "Could not detect Claude Code version — skipping check"
 elif _version_lt "$cc_version" "$MIN_CC_VERSION"; then
-  fail "Claude Code $cc_version is below minimum $MIN_CC_VERSION — upgrade first"
+  printf '[FAIL] Claude Code %s is below minimum %s\n' "$cc_version" "$MIN_CC_VERSION" >&2
+  printf '       Floor enforces fixes for CVE-2025-59536 and CVE-2026-21852.\n' >&2
+  printf '       Upgrade: npm install -g @anthropic-ai/claude-code@latest\n' >&2
+  exit 1
 elif _version_lt "$cc_version" "$RECOMMENDED_CC_VERSION"; then
   warn "Claude Code $cc_version — full feature set requires $RECOMMENDED_CC_VERSION+"
 else

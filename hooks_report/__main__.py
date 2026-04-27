@@ -11,6 +11,14 @@ def main():
     if args.include_sensitive and not args.export_spans:
         print("warn: --include-sensitive has no effect without --export-spans", file=sys.stderr)
     db_path = args.db or os.environ.get("CLAUDE_HOOKS_DB") or config.DEFAULT_DB_PATH
+
+    if args.verify_audit_chain:
+        from .audit_chain import verify_chain
+        rc, messages = verify_chain(db_path)
+        for m in messages:
+            print(m, file=sys.stderr if rc != 0 else sys.stdout)
+        sys.exit(rc)
+
     db = HooksDB(db_path)
 
     try:

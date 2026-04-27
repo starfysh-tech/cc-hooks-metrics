@@ -1,54 +1,34 @@
 #!/usr/bin/env python3
 """PreToolUse guardrail: blocks destructive Bash commands and .env file access.
 
-Known limitation: regex-based detection can be bypassed (find -delete, variable
-expansion). Goal is catching accidental destruction, not adversarial evasion.
+Uses shlex-token predicates from `_patterns.py` rather than regex on raw
+strings. Each rule is a small named function — adding a new dangerous flag
+form is a new branch, not a regex tweak.
+
+Limits: shlex does not see process substitution and treats backticks as
+plain text. Goal is catching accidental destruction, not adversarial evasion.
+
+Escape hatch: $GUARD_SECURITY_ALLOW (comma-separated rule names) skips
+specific rules per-machine — e.g. `GUARD_SECURITY_ALLOW=blocks_force_push_main`.
 """
 import json
-import re
 import sys
+from pathlib import Path
 
-# Bash: destructive command patterns (pre-compiled)
-BASH_BLOCKED = [
-    re.compile(r"rm\s+.*-[^\s]*[rf][^\s]*\s+(/|~|\$HOME|\*)"),  # rm with force flags on dangerous targets
-    re.compile(r"sudo\s+rm\b"),                                    # sudo rm anything
-    re.compile(r">\s*/etc/"),                                       # redirect to system dirs
-    re.compile(r"chmod\s+777\s+/"),                                 # chmod 777 /
-    re.compile(r"\bmkfs\."),                                         # format commands
-    re.compile(r"\bdd\b.*\bof=/dev/"),                              # raw device writes
-]
+if __name__ == "__main__":
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-# .env: block access except .env.sample/.env.example/.env.template/.env.test
-ENV_PATTERN = re.compile(r"\.env\b(?!\.(sample|example|template|test))")
+from _patterns import ENV_PATTERN, evaluate_command  # noqa: E402
 
-# File tools that access paths
 FILE_TOOL_PATH_FIELDS = {
-    "Read": "file_path", "Write": "file_path", "Edit": "file_path",
+    "Read": "file_path",
+    "Write": "file_path",
+    "Edit": "file_path",
     "MultiEdit": "file_path",
 }
 
 
-def _check_bash(command: str) -> str | None:
-    """Check a single command segment against blocked patterns."""
-    for pattern in BASH_BLOCKED:
-        if pattern.search(command):
-            return f"Blocked: matches pattern {pattern.pattern!r}"
-    if ENV_PATTERN.search(command):
-        return "Blocked: .env file access via Bash"
-    return None
-
-
-def _split_chained(command: str) -> list[str]:
-    """Split on &&, ||, ;, |, newline to check each segment.
-
-    Does not split on backtick or $() subshell syntax. Patterns use
-    .search() which scans through subshell wrappers, but any future
-    ^-anchored pattern would not.
-    """
-    return re.split(r"\s*(?:&&|\|\||;|\||\n)\s*", command)
-
-
-def main():
+def main() -> None:
     try:
         raw = sys.stdin.read()
         if not raw.strip():
@@ -62,26 +42,27 @@ def main():
     tool_name = payload.get("tool_name", "")
     tool_input = payload.get("tool_input") or {}
 
-    # Bash command checks
     if tool_name == "Bash":
         command = tool_input.get("command", "")
-        for segment in _split_chained(command):
-            reason = _check_bash(segment.strip())
-            if reason:
-                print(f"ACTION REQUIRED: {reason}. Rethink your approach.", file=sys.stderr)
-                sys.exit(2)
-        sys.exit(0)
-
-    # File tool .env checks
-    if tool_name in FILE_TOOL_PATH_FIELDS:
-        field = FILE_TOOL_PATH_FIELDS[tool_name]
-        path = tool_input.get(field, "")
-        if ENV_PATTERN.search(path):
-            print(f"ACTION REQUIRED: .env file access blocked via {tool_name}. Use .env.example instead.", file=sys.stderr)
+        blocked, reason = evaluate_command(command)
+        if blocked:
+            print(f"ACTION REQUIRED: Blocked: {reason}. Rethink your approach.", file=sys.stderr)
+            sys.exit(2)
+        if ENV_PATTERN.search(command):
+            print("ACTION REQUIRED: Blocked: .env file access via Bash. Rethink your approach.", file=sys.stderr)
             sys.exit(2)
         sys.exit(0)
 
-    # All other tools: allow
+    if tool_name in FILE_TOOL_PATH_FIELDS:
+        path = tool_input.get(FILE_TOOL_PATH_FIELDS[tool_name], "")
+        if ENV_PATTERN.search(path):
+            print(
+                f"ACTION REQUIRED: .env file access blocked via {tool_name}. Use .env.example instead.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        sys.exit(0)
+
     sys.exit(0)
 
 

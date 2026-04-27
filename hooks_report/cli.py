@@ -49,4 +49,9 @@ def parse_args():
         default=None,
         help="Generate periodic summary as JSON",
     )
+    parser.add_argument(
+        "--verify-audit-chain",
+        action="store_true",
+        help="Verify audit_events chain integrity (OWASP ASI10 tamper detection)",
+    )
     return parser.parse_args()

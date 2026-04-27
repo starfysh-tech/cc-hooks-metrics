@@ -5,6 +5,8 @@ import json
 from unittest.mock import MagicMock, patch
 
 from hooks_report.otlp import (
+    _endpoint_host_allowed,
+    _host_allowlist,
     _parse_headers,
     _typed_value,
     build_otlp_payload,
@@ -77,6 +79,70 @@ def test_parse_headers_malformed_entry_skipped():
     assert "no-equals-sign" not in result
     assert result["good"] == "val"
     assert result["another"] == "ok"
+
+
+def test_parse_headers_drops_crlf_in_value(capsys):
+    result = _parse_headers("X-Smug=foo\r\nInjected: bad,X-OK=valid")
+    assert "X-Smug" not in result
+    assert result["X-OK"] == "valid"
+    err = capsys.readouterr().err
+    assert "X-Smug" in err and "CR/LF" in err
+
+
+def test_parse_headers_drops_crlf_in_key(capsys):
+    result = _parse_headers("X-Bad\nKey=foo,X-OK=valid")
+    assert all("\n" not in k for k in result)
+    assert result["X-OK"] == "valid"
+    assert "CR/LF" in capsys.readouterr().err
+
+
+# ── host allow-list ────────────────────────────────────────────────────────────
+
+def test_host_allowlist_unset_returns_none():
+    with patch.dict("os.environ", {}, clear=True):
+        assert _host_allowlist() is None
+
+
+def test_host_allowlist_empty_after_parse_returns_empty():
+    with patch.dict("os.environ", {"HOOKS_METRICS_OTLP_ALLOWED_HOSTS": ",, ,"}, clear=True):
+        assert _host_allowlist() == []
+
+
+def test_host_allowlist_normalizes_case_and_whitespace():
+    with patch.dict(
+        "os.environ",
+        {"HOOKS_METRICS_OTLP_ALLOWED_HOSTS": " OTel.local , Otel.Cloud "},
+        clear=True,
+    ):
+        assert _host_allowlist() == ["otel.local", "otel.cloud"]
+
+
+def test_endpoint_host_allowed_unset_allows_anything():
+    with patch.dict("os.environ", {}, clear=True):
+        ok, _ = _endpoint_host_allowed("https://anywhere.example/v1")
+        assert ok is True
+
+
+def test_endpoint_host_allowed_match():
+    env = {"HOOKS_METRICS_OTLP_ALLOWED_HOSTS": "otel.local"}
+    with patch.dict("os.environ", env, clear=True):
+        ok, host = _endpoint_host_allowed("http://otel.local:4318")
+        assert ok is True and host == "otel.local"
+
+
+def test_endpoint_host_allowed_mismatch():
+    env = {"HOOKS_METRICS_OTLP_ALLOWED_HOSTS": "otel.local"}
+    with patch.dict("os.environ", env, clear=True):
+        ok, host = _endpoint_host_allowed("https://evil.example")
+        assert ok is False and host == "evil.example"
+
+
+def test_endpoint_host_allowed_all_empty_denies(capsys):
+    env = {"HOOKS_METRICS_OTLP_ALLOWED_HOSTS": ", ,"}
+    with patch.dict("os.environ", env, clear=True):
+        ok, _ = _endpoint_host_allowed("http://otel.local:4318")
+        assert ok is False
+        assert "denying all" in capsys.readouterr().err
 
 
 # ── build_otlp_payload ────────────────────────────────────────────────────────

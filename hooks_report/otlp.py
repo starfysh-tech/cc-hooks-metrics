@@ -10,6 +10,7 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import TYPE_CHECKING
 
@@ -50,8 +51,10 @@ def _typed_value(v) -> dict:
     return {"stringValue": str(v)}
 
 
-def _attrs_to_otlp(attrs: dict) -> list[dict]:
-    """Convert flat dict to OTLP KeyValue list."""
+def _attrs_to_otlp(attrs: dict | None) -> list[dict]:
+    """Convert flat dict to OTLP KeyValue list. None → empty list."""
+    if not attrs:
+        return []
     return [{"key": k, "value": _typed_value(v)} for k, v in attrs.items()]
 
 
@@ -147,19 +150,52 @@ def build_otlp_payload(spans: list["Span"]) -> dict:
 def _parse_headers(header_str: str) -> dict:
     """Parse 'key=value,key2=value2' header string into a dict.
 
-    Handles spaces around delimiters. Warns to stderr on malformed entries.
+    Handles spaces around delimiters. Warns and drops entries that are
+    malformed or whose key/value contain CR/LF (CRLF-injection guard).
+    Valid entries are returned even when a sibling entry is rejected.
     """
     headers: dict[str, str] = {}
     for part in header_str.split(","):
         part = part.strip()
         if not part:
             continue
-        if "=" in part:
-            k, _, v = part.partition("=")
-            headers[k.strip()] = v.strip()
-        else:
+        if "=" not in part:
             print(f"warn: otlp: malformed header entry skipped: {part!r}", file=sys.stderr)
+            continue
+        k, _, v = part.partition("=")
+        k, v = k.strip(), v.strip()
+        if "\r" in k or "\n" in k or "\r" in v or "\n" in v:
+            # Log key only — value may contain credentials.
+            print(f"warn: otlp: header {k!r} dropped — contains CR/LF", file=sys.stderr)
+            continue
+        headers[k] = v
     return headers
+
+
+def _host_allowlist() -> list[str] | None:
+    """Returns None if env unset (off), else a (possibly empty) hostname list.
+
+    Empty list means env was set but parsed to nothing — caller treats as deny-all.
+    """
+    raw = os.environ.get(config.OTLP_ALLOWED_HOSTS_VAR)
+    if raw is None:
+        return None
+    return [h.strip().lower() for h in raw.split(",") if h.strip()]
+
+
+def _endpoint_host_allowed(endpoint: str) -> tuple[bool, str]:
+    """Returns (allowed, parsed_host). Empty allowlist after parse → deny + stderr."""
+    allowlist = _host_allowlist()
+    if allowlist is None:
+        return True, ""
+    host = (urllib.parse.urlparse(endpoint).hostname or "").lower()
+    if not allowlist:
+        print(
+            f"warn: otlp: {config.OTLP_ALLOWED_HOSTS_VAR} set but parsed empty — denying all hosts",
+            file=sys.stderr,
+        )
+        return False, host
+    return host in allowlist, host
 
 
 def send_spans(spans: list["Span"]) -> int:
@@ -173,6 +209,14 @@ def send_spans(spans: list["Span"]) -> int:
 
     endpoint = os.environ.get(config.OTLP_ENDPOINT_VAR, "").rstrip("/")
     if not endpoint:
+        return 0
+
+    allowed, host = _endpoint_host_allowed(endpoint)
+    if not allowed:
+        print(
+            f"warn: otlp: endpoint host {host!r} not in {config.OTLP_ALLOWED_HOSTS_VAR}; not sending",
+            file=sys.stderr,
+        )
         return 0
 
     url = f"{endpoint}/v1/traces"

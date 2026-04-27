@@ -34,11 +34,20 @@ session=$(printf '%s' "$session" | tr -d '`$\n\r')
 full_payload=$(head -c 65536 "$TMPFILE")
 full_payload=$(printf '%s' "$full_payload" | tr -d '`$')
 
-sqlite3 "$HOOKS_DB" >/dev/null <<SQL || echo "warn: audit-logger: sqlite3 insert failed" >&2
+if [[ "${HOOKS_AUDIT_CHAIN:-0}" = "1" ]]; then
+  # Atomic chained insert (OWASP ASI10). Helper opens single sqlite3 connection
+  # with BEGIN IMMEDIATE so concurrent writers serialize, then hashes the
+  # persisted column values for verifier determinism.
+  CLAUDE_HOOKS_DB="$HOOKS_DB" PYTHONPATH="$(dirname "$0")" python3 -m hooks_report.audit_chain \
+    --insert "$ts" "$session" "$tool" "$full_payload" \
+    || echo "warn: audit-logger: chained insert failed" >&2
+else
+  sqlite3 "$HOOKS_DB" >/dev/null <<SQL || echo "warn: audit-logger: sqlite3 insert failed" >&2
 PRAGMA busy_timeout=1000;
 INSERT INTO audit_events (ts, session, tool, input)
 VALUES ('$(_sql_escape "$ts")', '$(_sql_escape "$session")', '$(_sql_escape "$tool")', '$(_sql_escape "$full_payload")');
 SQL
+fi
 
 _maybe_prune_hooks_db
 

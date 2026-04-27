@@ -28,7 +28,9 @@ def test_db_path():
             ts TEXT NOT NULL DEFAULT (datetime('now')),
             session TEXT NOT NULL DEFAULT '',
             tool TEXT NOT NULL DEFAULT '',
-            input TEXT NOT NULL DEFAULT ''
+            input TEXT NOT NULL DEFAULT '',
+            prev_hash TEXT DEFAULT '',
+            row_hash TEXT DEFAULT ''
         );
     """)
     conn.close()

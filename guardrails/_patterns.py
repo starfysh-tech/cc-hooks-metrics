@@ -63,19 +63,40 @@ def tokenize(command: str) -> list[list[str]]:
 
 _SUDO_ENV_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
+# sudo flags that consume the following token as their value. `-u root` must
+# step over both tokens or `root` is mistaken for the command (cubic feedback).
+_SUDO_VALUED_FLAGS = {
+    "-u", "--user", "-g", "--group", "-D", "--chdir", "-C", "--close-from",
+    "-r", "--role", "-t", "--type", "-T", "--command-timeout",
+    "-A", "--askpass", "-p", "--prompt", "-h", "--host", "-U", "--other-user",
+}
+
 
 def _effective_command(stage: list[str]) -> str:
     """Return the effective command name, skipping a leading `sudo` along with
-    any sudo flags (`-E`, `-u user`, etc.) AND env assignments (`FOO=1 cmd`).
+    any sudo flags (`-E`, `-u user`, `--user=root`, etc.) AND env assignments
+    (`FOO=1 cmd`).
 
-    `sudo curl …`, `sudo -E bash`, `sudo FOO=1 bash` all return the tool name.
+    `sudo curl …`, `sudo -E bash`, `sudo -u root bash`, `sudo --user=root bash`,
+    `sudo FOO=1 bash` all return the underlying tool name.
     """
     if not stage:
         return ""
     if stage[0] != "sudo":
         return stage[0]
+    skip_next = False
     for tok in stage[1:]:
-        if tok.startswith("-") or _SUDO_ENV_RE.match(tok):
+        if skip_next:
+            skip_next = False
+            continue
+        if tok in _SUDO_VALUED_FLAGS:
+            skip_next = True
+            continue
+        if tok.startswith("-"):
+            # `--user=root` keeps its value in the same token; bare `--`/`-h`/
+            # `-E` etc. don't consume the next argument.
+            continue
+        if _SUDO_ENV_RE.match(tok):
             continue
         return tok
     return ""

@@ -1,2 +1,6 @@
+# Floor exceeds known Claude Code CVE fix versions:
+#   CVE-2025-59536 (CVSS 8.7, settings.json/.mcp.json code injection) — fixed in 1.0.111
+#   CVE-2026-21852 (CVSS 5.3, apiUrl override exfiltrates auth header) — fixed in 2.0.65
+# Do not relax MIN below 2.0.65 without re-evaluating these CVEs.
 MIN_CC_VERSION=2.1.50
 RECOMMENDED_CC_VERSION=2.1.89

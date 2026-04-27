@@ -63,12 +63,15 @@ def tokenize(command: str) -> list[list[str]]:
 
 _SUDO_ENV_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
-# sudo flags that consume the following token as their value. `-u root` must
-# step over both tokens or `root` is mistaken for the command (cubic feedback).
+# sudo flags that consume the following token as their value. Per sudo(8):
+# -A/--askpass and -B/--bell are boolean toggles, NOT valued — including them
+# here would consume the actual command. -R/--chroot was missing and lets
+# `sudo -R /tmp bash` evade detection.
 _SUDO_VALUED_FLAGS = {
     "-u", "--user", "-g", "--group", "-D", "--chdir", "-C", "--close-from",
     "-r", "--role", "-t", "--type", "-T", "--command-timeout",
-    "-A", "--askpass", "-p", "--prompt", "-h", "--host", "-U", "--other-user",
+    "-p", "--prompt", "-h", "--host", "-U", "--other-user",
+    "-R", "--chroot",
 }
 
 

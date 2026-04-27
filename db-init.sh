@@ -20,17 +20,22 @@ SQL
     fi
     # Migrate existing DB: add stderr_snippet column if missing
     sqlite3 "$HOOKS_DB" "ALTER TABLE hook_metrics ADD COLUMN stderr_snippet TEXT DEFAULT ''" 2>/dev/null || true
+    # Migrate existing DB: add audit-event chain columns if missing (OWASP ASI10)
+    sqlite3 "$HOOKS_DB" "ALTER TABLE audit_events ADD COLUMN prev_hash TEXT DEFAULT ''" 2>/dev/null || true
+    sqlite3 "$HOOKS_DB" "ALTER TABLE audit_events ADD COLUMN row_hash TEXT DEFAULT ''" 2>/dev/null || true
     return 0
   fi
 
   sqlite3 "$HOOKS_DB" >/dev/null <<'SQL'
 PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS audit_events (
-    id      INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts      TEXT NOT NULL,
-    session TEXT NOT NULL,
-    tool    TEXT NOT NULL,
-    input   TEXT NOT NULL
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts        TEXT NOT NULL,
+    session   TEXT NOT NULL,
+    tool      TEXT NOT NULL,
+    input     TEXT NOT NULL,
+    prev_hash TEXT DEFAULT '',
+    row_hash  TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS hook_metrics (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,10 +73,14 @@ $1
 SQL
 }
 
-# Probabilistic pruning (~1% of calls): delete rows older than 30 days
+# Probabilistic pruning (~1% of calls): delete rows older than 30 days.
+# audit_events pruning is skipped when HOOKS_AUDIT_CHAIN=1 — pruning would
+# create unverifiable hash discontinuities at the prune boundary.
 _maybe_prune_hooks_db() {
   if [ $(( RANDOM % 100 )) -eq 0 ]; then
-    _db_exec "DELETE FROM audit_events WHERE id IN (SELECT id FROM audit_events WHERE ts < datetime('now','-30 days') LIMIT 500);
-              DELETE FROM hook_metrics WHERE id IN (SELECT id FROM hook_metrics WHERE ts < datetime('now','-30 days') LIMIT 500);" >/dev/null 2>&1 || true
+    if [[ "${HOOKS_AUDIT_CHAIN:-0}" != "1" ]]; then
+      _db_exec "DELETE FROM audit_events WHERE id IN (SELECT id FROM audit_events WHERE ts < datetime('now','-30 days') LIMIT 500);" >/dev/null 2>&1 || true
+    fi
+    _db_exec "DELETE FROM hook_metrics WHERE id IN (SELECT id FROM hook_metrics WHERE ts < datetime('now','-30 days') LIMIT 500);" >/dev/null 2>&1 || true
   fi
 }

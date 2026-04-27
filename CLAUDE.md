@@ -128,8 +128,9 @@ PYTHONPATH="$DIR" exec "$PYTHON" -m hooks_report "$@"
 
 ## Security & operations
 
-- [SECURITY.md](SECURITY.md) — OWASP Agentic Top 10 (2026) coverage table and honest limits.
+- [SECURITY.md](SECURITY.md) — coverage table for the [OWASP Top 10 for Agentic Applications (2026)](https://genai.owasp.org/), per-ASI mapping, honest limits.
 - [RUNBOOK.md](RUNBOOK.md) — kill-switch drill, audit-chain verification, archive policy.
+- Claude Code CVEs the floor in `version-requirements` defends against: [CVE-2025-59536](https://nvd.nist.gov/vuln/detail/CVE-2025-59536) (`.claude/settings.json` / `.mcp.json` code injection, fixed 1.0.111) and [CVE-2026-21852](https://nvd.nist.gov/vuln/detail/CVE-2026-21852) (`apiUrl` auth-header exfil, fixed 2.0.65).
 
 ### Opt-in security toggles
 

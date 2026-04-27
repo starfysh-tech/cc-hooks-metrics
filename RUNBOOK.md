@@ -1,7 +1,8 @@
 # Runbook
 
 Operational procedures for `cc-hooks-metrics` in production. Companion doc to
-[SECURITY.md](SECURITY.md).
+[SECURITY.md](SECURITY.md), which maps each control to the
+[OWASP Top 10 for Agentic Applications (2026)](https://genai.owasp.org/).
 
 ## Kill switch — stopping a runaway Claude Code session
 
@@ -145,9 +146,15 @@ Symptom: `warn: otlp: endpoint host '<host>' not in HOOKS_METRICS_OTLP_ALLOWED_H
 `version-requirements` enforces `MIN_CC_VERSION=2.1.50` to keep users above the
 known CVE fix versions:
 
-- **CVE-2025-59536** (CVSS 8.7) — fixed in 1.0.111
-- **CVE-2026-21852** (CVSS 5.3) — fixed in 2.0.65
+- [**CVE-2025-59536**](https://nvd.nist.gov/vuln/detail/CVE-2025-59536) (CVSS 8.7) — `.claude/settings.json` / `.mcp.json` code injection — fixed in 1.0.111
+- [**CVE-2026-21852**](https://nvd.nist.gov/vuln/detail/CVE-2026-21852) (CVSS 5.3) — `apiUrl` override exfiltrates auth header — fixed in 2.0.65
 
 Do not relax `MIN_CC_VERSION` below `2.0.65` without re-evaluating both CVEs.
 When a new Claude Code CVE lands, bump the floor and add a comment in
 `version-requirements` referencing the CVE id.
+
+## References
+
+- [OWASP GenAI Security Project](https://genai.owasp.org/) — canonical Agentic Top 10 catalog.
+- [SECURITY.md](SECURITY.md) — per-ASI coverage table for this repo, with honest limits.
+- [Claude Code managed settings](https://docs.claude.com/en/docs/claude-code/settings) — for pinning `ANTHROPIC_BASE_URL` and other env vars at the IT-deployed layer.

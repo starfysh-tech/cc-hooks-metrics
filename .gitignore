@@ -8,6 +8,7 @@ __pycache__/
 dist/
 *.egg-info/
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
 .DS_Store
 .pytest_cache/
 .ruff_cache/

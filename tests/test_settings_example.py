@@ -45,6 +45,7 @@ def test_guardrails_example_is_valid_json():
     expected = {
         "PreToolUse_guard-security", "PostToolUse_guard-python-lint",
         "PostToolUse_guard-python-typecheck", "PermissionRequest_guard-auto-allow",
+        "SessionStart_guard-incoming-config",
     }
     actual = {k for k in data if not k.startswith("_")}
     assert actual == expected

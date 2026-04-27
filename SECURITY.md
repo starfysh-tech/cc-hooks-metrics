@@ -10,8 +10,8 @@ Agentic Applications (2026)** — see the OWASP GenAI Security Project at
 
 - **OWASP GenAI Security Project** — [genai.owasp.org](https://genai.owasp.org/) — the parent project that publishes the Agentic Top 10 and the LLM Applications Top 10.
 - **Claude Code CVEs addressed by the floor in `version-requirements`:**
-  - [CVE-2025-59536](https://nvd.nist.gov/vuln/detail/CVE-2025-59536) — `.claude/settings.json` / `.mcp.json` code injection (fixed in Claude Code 1.0.111).
-  - [CVE-2026-21852](https://nvd.nist.gov/vuln/detail/CVE-2026-21852) — `apiUrl` override exfiltrates the auth header (fixed in Claude Code 2.0.65).
+  - [CVE-2025-59536](https://nvd.nist.gov/vuln/detail/CVE-2025-59536) (CVSS 8.7) — `.claude/settings.json` / `.mcp.json` code injection (fixed in Claude Code 1.0.111).
+  - [CVE-2026-21852](https://nvd.nist.gov/vuln/detail/CVE-2026-21852) (CVSS 5.3) — `apiUrl` override exfiltrates the auth header (fixed in Claude Code 2.0.65).
 
 ## Reporting a vulnerability
 

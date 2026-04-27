@@ -116,10 +116,10 @@ table grows append-only. `hook_metrics` is still pruned at 30 days as before.
    ```bash
    CUTOFF=<CUTOFF>
    ARCHIVE=audit_archive_$(date +%Y%m%d).db
-   sqlite3 "$ARCHIVE" "CREATE TABLE IF NOT EXISTS audit_events AS SELECT * FROM audit_events WHERE 0;"
    sqlite3 ~/.claude/hooks.db \
      "ATTACH '$ARCHIVE' AS arc; \
-      INSERT INTO arc.audit_events SELECT * FROM audit_events WHERE id <= $CUTOFF;"
+      CREATE TABLE IF NOT EXISTS arc.audit_events AS SELECT * FROM main.audit_events WHERE 0; \
+      INSERT INTO arc.audit_events SELECT * FROM main.audit_events WHERE id <= $CUTOFF;"
    ```
 4. Keep the archive in write-once storage (S3 Object Lock, append-only EBS,
    etc.).

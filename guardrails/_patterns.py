@@ -61,28 +61,34 @@ def tokenize(command: str) -> list[list[str]]:
 # are user-facing — keep them short and actionable.
 
 
-def _effective_command(stage: list[str]) -> str:
-    """Return the effective command name, skipping a leading `sudo` (and its flags).
+_SUDO_ENV_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
-    `sudo curl …`, `sudo -E bash`, etc. all return the underlying tool name.
+
+def _effective_command(stage: list[str]) -> str:
+    """Return the effective command name, skipping a leading `sudo` along with
+    any sudo flags (`-E`, `-u user`, etc.) AND env assignments (`FOO=1 cmd`).
+
+    `sudo curl …`, `sudo -E bash`, `sudo FOO=1 bash` all return the tool name.
     """
     if not stage:
         return ""
     if stage[0] != "sudo":
         return stage[0]
     for tok in stage[1:]:
-        if not tok.startswith("-"):
-            return tok
+        if tok.startswith("-") or _SUDO_ENV_RE.match(tok):
+            continue
+        return tok
     return ""
 
 
 def blocks_pipe_to_shell(stages: list[list[str]]) -> tuple[bool, str]:
     """curl/wget piped into bash/sh — the canonical install-script attack.
 
-    Recognizes the fetcher and shell even when prefixed with `sudo` (and any
-    sudo flags). Also detects fetchers that appear anywhere upstream of a
-    `| bash` — including `sh -c "curl … | bash"`-style invocations whose
-    inner pipeline collapses curl into the same stage as `sh -c …`.
+    Recognizes the fetcher and shell even when prefixed with `sudo` (flags or
+    env assignments). Also detects `sh -c "curl … | bash"`-style invocations
+    where the inner pipeline collapses curl into a `sh -c …` stage — but only
+    when the stage IS a shell, so benign pipelines like `echo curl | bash`
+    are not flagged.
     """
     fetchers = {"curl", "wget"}
     shells = {"bash", "sh", "zsh", "ksh"}
@@ -91,7 +97,9 @@ def blocks_pipe_to_shell(stages: list[list[str]]) -> tuple[bool, str]:
         first = _effective_command(stage)
         if first in shells and saw_fetcher:
             return True, f"pipe-to-shell: fetched script piped to {first}"
-        if first in fetchers or any(t in fetchers for t in stage):
+        if first in fetchers or (
+            first in shells and any(t in fetchers for t in stage[1:])
+        ):
             saw_fetcher = True
     return False, ""
 

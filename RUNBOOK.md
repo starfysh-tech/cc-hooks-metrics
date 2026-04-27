@@ -112,10 +112,14 @@ table grows append-only. `hook_metrics` is still pruned at 30 days as before.
    archive a broken chain** — investigate first.
 2. Pick a cutoff `id`. Note its `row_hash` — this becomes the anchor of the
    archive.
-3. Export the rows to be archived:
+3. Export the rows to be archived (replace `<CUTOFF>` with the id chosen in step 2):
    ```bash
-   sqlite3 ~/.claude/hooks.db ".dump audit_events" \
-     | sqlite3 audit_archive_$(date +%Y%m%d).db
+   CUTOFF=<CUTOFF>
+   ARCHIVE=audit_archive_$(date +%Y%m%d).db
+   sqlite3 "$ARCHIVE" "CREATE TABLE IF NOT EXISTS audit_events AS SELECT * FROM audit_events WHERE 0;"
+   sqlite3 ~/.claude/hooks.db \
+     "ATTACH '$ARCHIVE' AS arc; \
+      INSERT INTO arc.audit_events SELECT * FROM audit_events WHERE id <= $CUTOFF;"
    ```
 4. Keep the archive in write-once storage (S3 Object Lock, append-only EBS,
    etc.).

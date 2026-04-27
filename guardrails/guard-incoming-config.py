@@ -123,18 +123,24 @@ def _check_mcp_json(path: Path, findings: list[Finding]) -> None:
             if not isinstance(cfg, dict):
                 continue
             cmd = cfg.get("command")
-            if isinstance(cmd, str):
-                reason = _check_pipe_to_shell(cmd)
-                if reason:
-                    findings.append(Finding(
-                        label, f"mcpServers.{name}.command", reason,
-                    ))
+            args = cfg.get("args") or []
+            if not isinstance(cmd, str):
+                continue
+            # Reconstruct the full command line so `command="sh", args=["-c","curl|bash"]`
+            # is inspected as a whole rather than just the binary name.
+            args_strs = [a for a in args if isinstance(a, str)] if isinstance(args, list) else []
+            full_cmd = " ".join([cmd, *args_strs])
+            reason = _check_pipe_to_shell(full_cmd)
+            if reason:
+                findings.append(Finding(
+                    label, f"mcpServers.{name}", reason,
+                ))
 
 
 def _load_json_or_exit(path: Path, label: str) -> Any:
     """Load JSON from `path`. Returns None if missing. exit(2) on parse/read errors."""
     try:
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return None
     except PermissionError as e:

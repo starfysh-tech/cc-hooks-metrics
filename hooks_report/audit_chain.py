@@ -98,7 +98,6 @@ def verify_chain(db_path: str) -> tuple[int, list[str]]:
     breaks: list[str] = []
     rows_seen = 0
     expected_prev = ""
-    sentinel_seen = False
 
     with sqlite3.connect(db_path, timeout=2.0) as conn:
         cur = conn.execute(
@@ -109,16 +108,14 @@ def verify_chain(db_path: str) -> tuple[int, list[str]]:
         for row in cur:
             rows_seen += 1
             rid, ts, session, tool, input_payload, prev_hash, row_hash = row
-            # Sentinel rows inserted when chain anchor was lost — flag once
-            # and reset expected_prev so we don't cascade-fail every row after.
-            if prev_hash.startswith("CHAIN_BREAK_"):
+            is_sentinel = prev_hash.startswith("CHAIN_BREAK_")
+            if is_sentinel:
+                # Boundary marker — surface it but still verify the digest so a
+                # tampered sentinel row is detected before becoming the next anchor.
                 breaks.append(
                     f"row id={rid}: chain reset at sentinel {prev_hash!r}"
                 )
-                sentinel_seen = True
-                expected_prev = row_hash
-                continue
-            if prev_hash != expected_prev:
+            elif prev_hash != expected_prev:
                 breaks.append(
                     f"row id={rid}: prev_hash mismatch — expected {expected_prev!r}, got {prev_hash!r}"
                 )
@@ -134,11 +131,6 @@ def verify_chain(db_path: str) -> tuple[int, list[str]]:
         msgs.append(f"audit-chain: {len(breaks)} issue(s) across {rows_seen} row(s):")
         msgs.extend(f"  {b}" for b in breaks)
         return 1, msgs
-    if sentinel_seen:
-        msgs.append(
-            f"audit-chain: OK with {rows_seen} row(s), but sentinel boundaries present (see above)"
-        )
-        return 0, msgs
     msgs.append(f"audit-chain: OK — {rows_seen} row(s) verified")
     return 0, msgs
 

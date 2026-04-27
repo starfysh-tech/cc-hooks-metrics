@@ -212,3 +212,27 @@ def test_has_chain_columns_true_on_new_schema(chain_db_path):
 
 def test_has_chain_columns_false_on_pre_migration(pre_migration_db_path):
     assert _has_chain_columns(pre_migration_db_path) is False
+
+
+def test_verify_detects_tampered_sentinel_row(chain_db_path):
+    """A sentinel row whose payload is mutated must be reported as tampered,
+    not silently accepted via the boundary-marker path."""
+    insert_chained(chain_db_path, "t1", "s", "Bash", "a")
+    with sqlite3.connect(chain_db_path) as conn:
+        # Insert a synthetic sentinel row that the verifier should accept...
+        from hooks_report.audit_chain import _digest
+        ts2, sess2, tool2, payload2 = "t2", "s", "Bash", "b"
+        prev_hash = "CHAIN_BREAK_t2"
+        rh = _digest(prev_hash, ts2, sess2, tool2, payload2)
+        conn.execute(
+            "INSERT INTO audit_events (ts, session, tool, input, prev_hash, row_hash) "
+            "VALUES (?,?,?,?,?,?)",
+            (ts2, sess2, tool2, payload2, prev_hash, rh),
+        )
+        # ...then tamper with its tool field, leaving row_hash unchanged.
+        conn.execute("UPDATE audit_events SET tool='TAMPERED' WHERE ts='t2'")
+        conn.commit()
+    rc, msgs = verify_chain(chain_db_path)
+    assert rc == 1
+    text = "\n".join(msgs)
+    assert "row_hash mismatch" in text

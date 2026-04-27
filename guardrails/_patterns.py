@@ -61,14 +61,37 @@ def tokenize(command: str) -> list[list[str]]:
 # are user-facing — keep them short and actionable.
 
 
+def _effective_command(stage: list[str]) -> str:
+    """Return the effective command name, skipping a leading `sudo` (and its flags).
+
+    `sudo curl …`, `sudo -E bash`, etc. all return the underlying tool name.
+    """
+    if not stage:
+        return ""
+    if stage[0] != "sudo":
+        return stage[0]
+    for tok in stage[1:]:
+        if not tok.startswith("-"):
+            return tok
+    return ""
+
+
 def blocks_pipe_to_shell(stages: list[list[str]]) -> tuple[bool, str]:
-    """curl/wget piped into bash/sh — the canonical install-script attack."""
+    """curl/wget piped into bash/sh — the canonical install-script attack.
+
+    Recognizes the fetcher and shell even when prefixed with `sudo` (and any
+    sudo flags). Also detects fetchers that appear anywhere upstream of a
+    `| bash` — including `sh -c "curl … | bash"`-style invocations whose
+    inner pipeline collapses curl into the same stage as `sh -c …`.
+    """
+    fetchers = {"curl", "wget"}
+    shells = {"bash", "sh", "zsh", "ksh"}
     saw_fetcher = False
     for stage in stages:
-        first = stage[0] if stage else ""
-        if first in {"bash", "sh", "zsh", "ksh"} and saw_fetcher:
+        first = _effective_command(stage)
+        if first in shells and saw_fetcher:
             return True, f"pipe-to-shell: fetched script piped to {first}"
-        if first in {"curl", "wget"}:
+        if first in fetchers or any(t in fetchers for t in stage):
             saw_fetcher = True
     return False, ""
 
@@ -119,27 +142,21 @@ def blocks_dd_to_device(stages: list[list[str]]) -> tuple[bool, str]:
 
 
 def blocks_chmod_777_root(stages: list[list[str]]) -> tuple[bool, str]:
-    """chmod 777 / — every-mode-on-root."""
+    """chmod 777 / — every-mode-on-root. Also catches `chmod -R 777 /` etc."""
     for stage in stages:
-        if (
-            len(stage) >= 3
-            and stage[0] == "chmod"
-            and stage[1] == "777"
-            and stage[2] == "/"
-        ):
+        if not stage or stage[0] != "chmod":
+            continue
+        args = stage[1:]
+        if "777" in args and "/" in args:
             return True, "chmod 777 /"
     return False, ""
 
 
 def blocks_redirect_to_etc(stages: list[list[str]]) -> tuple[bool, str]:
-    """`> /etc/...` redirection survives shlex as a token starting with `/etc/`.
-
-    shlex preserves `>` as a separate token only with punctuation_chars enabled.
-    Fallback: scan raw stage strings for `> /etc/` substring.
-    """
+    """`>`/`>>` redirection into /etc/, including quoted paths."""
     for stage in stages:
         joined = " ".join(stage)
-        if re.search(r">\s*/etc/", joined):
+        if re.search(r">+\s*['\"]?/etc/", joined):
             return True, "redirect into /etc/"
     return False, ""
 
@@ -158,16 +175,23 @@ def blocks_terraform_destroy(stages: list[list[str]]) -> tuple[bool, str]:
 
 
 def blocks_aws_delete_dangerous(stages: list[list[str]]) -> tuple[bool, str]:
-    """`aws SVC delete-*` excluding common dev-safe subcommands."""
+    """`aws SVC delete-*` excluding common dev-safe subcommands.
+
+    Scans all adjacent (token, next) pairs after the `aws` argv0 so global
+    options like `aws --region us-east-1 rds delete-db-cluster` and
+    `aws --profile prod ec2 delete-snapshot` are still detected.
+    """
     for stage in stages:
         if len(stage) < 3 or stage[0] != "aws":
             continue
-        service, sub = stage[1], stage[2]
-        if not sub.startswith("delete-") and sub != "rm":
-            continue
-        if (service, sub) in _AWS_DELETE_SAFELIST:
-            continue
-        return True, f"aws {service} {sub}"
+        for service, sub in zip(stage[1:], stage[2:]):
+            if service.startswith("-"):
+                continue
+            if not (sub.startswith("delete-") or sub == "rm"):
+                continue
+            if (service, sub) in _AWS_DELETE_SAFELIST:
+                continue
+            return True, f"aws {service} {sub}"
     return False, ""
 
 
@@ -196,7 +220,12 @@ def blocks_dropdb(stages: list[list[str]]) -> tuple[bool, str]:
 
 
 def blocks_force_push_main(stages: list[list[str]]) -> tuple[bool, str]:
-    """`git push --force` (or -f, --force-with-lease) targeting main/master."""
+    """`git push` force-targeting main/master via `--force`, `-f`,
+    `--force-with-lease`, or a `+`-prefixed refspec.
+
+    The `+ref` form is itself a force mechanism — detected even when no
+    explicit force flag is present (e.g., `git push origin +main`).
+    """
     protected = {"main", "master"}
     for stage in stages:
         if stage[:2] != ["git", "push"]:
@@ -205,15 +234,17 @@ def blocks_force_push_main(stages: list[list[str]]) -> tuple[bool, str]:
             t in {"--force", "-f"} or t.startswith("--force-with-lease")
             for t in stage[2:]
         )
-        if not force:
-            continue
         for arg in stage[2:]:
-            if arg in protected:
-                return True, "git force-push to main/master"
-            if arg.endswith(":main") or arg.endswith(":master"):
-                return True, "git force-push to main/master (refspec)"
-            if arg in {"+main", "+master"}:
+            plus = arg.startswith("+")
+            ref = arg[1:] if plus else arg
+            on_protected = (
+                ref in protected
+                or ref.endswith(":main") or ref.endswith(":master")
+            )
+            if plus and on_protected:
                 return True, "git force-push to main/master (+ref)"
+            if force and on_protected:
+                return True, "git force-push to main/master"
     return False, ""
 
 

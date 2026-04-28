@@ -399,6 +399,15 @@ def test_soft_block_fires_when_any_arg_is_non_tmp():
     assert decision and "docs/foo.md" in decision["permissionDecisionReason"]
 
 
+def test_soft_block_rm_tmp_traversal_bypass():
+    """`/tmp/../etc/passwd` must not pass the prefix check — normalize first."""
+    r = _run({"tool_name": "Bash", "tool_input": {"command": "rm -f /tmp/../etc/passwd"}})
+    assert r.returncode == 0
+    decision = _soft_block_decision(r.stdout)
+    assert decision and decision["permissionDecision"] == "ask"
+    assert "/tmp/../etc/passwd" in decision["permissionDecisionReason"]
+
+
 def test_soft_block_does_not_override_hard_block():
     """Catastrophic targets must still hard-block (exit 2), not soft-block."""
     r = _run({"tool_name": "Bash", "tool_input": {"command": "rm -rf /"}})

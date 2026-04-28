@@ -167,7 +167,8 @@ def blocks_rm_non_tmp(stages: list[list[str]]) -> tuple[bool, str]:
         for arg in stage[1:]:
             if arg.startswith("-"):
                 continue
-            if arg == "/tmp" or arg.startswith("/tmp/"):
+            norm = os.path.normpath(arg) if arg.startswith("/") else arg
+            if norm == "/tmp" or norm.startswith("/tmp/"):
                 continue
             return True, f"rm on non-/tmp path: {arg}"
     return False, ""

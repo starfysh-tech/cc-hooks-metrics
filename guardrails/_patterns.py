@@ -146,6 +146,33 @@ def blocks_rm_dangerous_target(stages: list[list[str]]) -> tuple[bool, str]:
     return False, ""
 
 
+def blocks_rm_non_tmp(stages: list[list[str]]) -> tuple[bool, str]:
+    """Soft-block: rm against any path not under /tmp — requires confirmation.
+
+    Hard catastrophic targets are already caught by `blocks_rm_dangerous_target`.
+    This catches the long tail of specific-path `rm` commands (e.g.
+    ``rm -f docs/foo.md``, ``rm -f ~/.claude/plans/old.md``) that previously
+    fell through silently when ``skipDangerousModePermissionPrompt: true`` is
+    set in settings.json (auto mode).
+
+    Pairs with `evaluate_command_soft` and the soft-block branch in
+    ``guard-security.py``, which surfaces Claude Code's confirmation prompt by
+    emitting ``permissionDecision: "ask"`` in JSON ``hookSpecificOutput``
+    rather than refusing outright. Plain ``exit 1`` is treated as a
+    non-blocking warning by the harness, so the JSON contract is required.
+    """
+    for stage in stages:
+        if not stage or stage[0] != "rm":
+            continue
+        for arg in stage[1:]:
+            if arg.startswith("-"):
+                continue
+            if arg == "/tmp" or arg.startswith("/tmp/"):
+                continue
+            return True, f"rm on non-/tmp path: {arg}"
+    return False, ""
+
+
 def blocks_sudo_rm(stages: list[list[str]]) -> tuple[bool, str]:
     """`sudo rm` in any stage — even on a single file."""
     for stage in stages:
@@ -321,5 +348,28 @@ def evaluate_command(command: str) -> tuple[bool, str]:
             continue
         blocked, reason = rule(stages)
         if blocked:
+            return True, reason
+    return False, ""
+
+
+# Soft-block rules: not catastrophic, but consequential enough that auto-mode
+# should never run them silently. The caller emits JSON
+# ``permissionDecision: "ask"`` on match (see guard-security.py) to surface
+# Claude Code's confirmation prompt — not a hard refusal like RULES above.
+SOFT_RULES: dict[str, RuleFn] = {
+    "blocks_rm_non_tmp": blocks_rm_non_tmp,
+}
+
+
+def evaluate_command_soft(command: str) -> tuple[bool, str]:
+    """Run soft rules. Returns (match, reason). Same skip-list semantics as
+    `evaluate_command` — names in ``$GUARD_SECURITY_ALLOW`` are bypassed."""
+    stages = tokenize(command)
+    skip = _allowed_rules()
+    for name, rule in SOFT_RULES.items():
+        if name in skip:
+            continue
+        match, reason = rule(stages)
+        if match:
             return True, reason
     return False, ""

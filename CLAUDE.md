@@ -150,7 +150,7 @@ Optional guardrail scripts live in `guardrails/`. All use plain `python3` (stdli
 
 | Script | Event | Purpose |
 |--------|-------|---------|
-| `guard-security.py` | PreToolUse | Blocks destructive Bash + `.env` access |
+| `guard-security.py` | PreToolUse | Hard-blocks destructive Bash + `.env` access; soft-blocks `rm` against non-`/tmp` paths via `permissionDecision: "ask"` |
 | `guard-python-lint.py` | PostToolUse | Runs `ruff check` on `.py` Write/Edit |
 | `guard-python-typecheck.py` | PostToolUse | Runs `ty check` on `.py` Write/Edit |
 | `guard-ts-typecheck.py` | PostToolUse | Runs `tsc --noEmit` on `.ts`/`.tsx` Write/Edit |
@@ -162,7 +162,7 @@ All guardrails exit 2 + stderr to block (Claude self-corrects), exit 0 to allow.
 
 ### Hook Protocol
 
-- **PreToolUse**: stdin `{tool_name, tool_input}`. Exit 2 + stderr = block.
+- **PreToolUse**: stdin `{tool_name, tool_input}`. Exit 2 + stderr = hard-block. Exit 0 + stdout JSON `{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "ask", permissionDecisionReason: "..."}}` = soft-block (surfaces user confirmation prompt even when `skipDangerousModePermissionPrompt` is set).
 - **PostToolUse**: stdin `{tool_name, tool_input, tool_use_id}`. Exit 2 + stderr = block.
 - **PermissionRequest**: stdout JSON `{hookSpecificOutput: {hookEventName, decision: {behavior: "allow"}}}`. No output = defer to user.
 

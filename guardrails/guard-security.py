@@ -5,11 +5,23 @@ Uses shlex-token predicates from `_patterns.py` rather than regex on raw
 strings. Each rule is a small named function — adding a new dangerous flag
 form is a new branch, not a regex tweak.
 
+Two severity tiers:
+
+* ``RULES`` (hard-block): stderr message + ``exit 2``. Tool call is refused.
+  Use for catastrophic operations with no legitimate Claude Code use case.
+* ``SOFT_RULES`` (confirm-required): JSON ``hookSpecificOutput`` with
+  ``permissionDecision: "ask"`` + ``exit 0``. Surfaces Claude Code's native
+  confirmation prompt even when ``skipDangerousModePermissionPrompt`` /
+  ``skipAutoPermissionPrompt`` are set in settings.json. Plain ``exit 1`` is
+  treated as a non-blocking warning by the harness — the JSON contract is
+  required to actually gate the action in auto mode.
+
 Limits: shlex does not see process substitution and treats backticks as
 plain text. Goal is catching accidental destruction, not adversarial evasion.
 
 Escape hatch: $GUARD_SECURITY_ALLOW (comma-separated rule names) skips
-specific rules per-machine — e.g. `GUARD_SECURITY_ALLOW=blocks_force_push_main`.
+specific rules per-machine — e.g. `GUARD_SECURITY_ALLOW=blocks_force_push_main`
+or `GUARD_SECURITY_ALLOW=blocks_rm_non_tmp` to disable a soft-block.
 """
 import json
 import sys
@@ -18,7 +30,7 @@ from pathlib import Path
 if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _patterns import ENV_PATTERN, evaluate_command  # noqa: E402
+from _patterns import ENV_PATTERN, evaluate_command, evaluate_command_soft  # noqa: E402
 
 FILE_TOOL_PATH_FIELDS = {
     "Read": "file_path",
@@ -51,6 +63,27 @@ def main() -> None:
         if ENV_PATTERN.search(command):
             print("ACTION REQUIRED: Blocked: .env file access via Bash. Rethink your approach.", file=sys.stderr)
             sys.exit(2)
+        # Soft-block: surface Claude Code's confirmation prompt for consequential
+        # commands that aren't catastrophic enough to refuse outright. Uses the
+        # JSON ``hookSpecificOutput`` contract because plain ``exit 1`` is treated
+        # as a non-blocking warning by the harness when ``skipAutoPermissionPrompt``
+        # / ``skipDangerousModePermissionPrompt`` are set.
+        confirm, soft_reason = evaluate_command_soft(command)
+        if confirm:
+            print(
+                json.dumps(
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": "PreToolUse",
+                            "permissionDecision": "ask",
+                            "permissionDecisionReason": (
+                                f"{soft_reason} — explicit approval required."
+                            ),
+                        }
+                    }
+                )
+            )
+            sys.exit(0)
         sys.exit(0)
 
     if tool_name in FILE_TOOL_PATH_FIELDS:

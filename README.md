@@ -100,7 +100,7 @@ Optional guardrail scripts in `guardrails/` block unsafe operations and auto-all
 
 | Script | Event | Purpose |
 |--------|-------|---------|
-| `guard-security.py` | PreToolUse | Blocks destructive Bash + `.env` access |
+| `guard-security.py` | PreToolUse | Hard-blocks destructive Bash (`rm -rf /`, `terraform destroy`, force-push to `main`, …) and `.env` access. Soft-blocks `rm` against non-`/tmp` paths (forces a confirmation prompt). |
 | `guard-python-lint.py` | PostToolUse | Runs `ruff check` on `.py` Write/Edit |
 | `guard-python-typecheck.py` | PostToolUse | Runs `ty check` on `.py` Write/Edit |
 | `guard-ts-typecheck.py` | PostToolUse | Runs `tsc --noEmit` on `.ts`/`.tsx` Write/Edit |

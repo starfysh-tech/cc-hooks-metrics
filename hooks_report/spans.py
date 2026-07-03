@@ -50,14 +50,9 @@ class Span:
     @staticmethod
     def _is_valid_hex_string(s: str, length: int) -> bool:
         """Check if s is exactly 'length' lowercase hex digits."""
-        if len(s) != length:
+        if not isinstance(s, str) or len(s) != length:
             return False
-        try:
-            int(s, 16)
-            # Also verify all chars are lowercase (0-9, a-f)
-            return all(c in "0123456789abcdef" for c in s)
-        except ValueError:
-            return False
+        return all(c in "0123456789abcdef" for c in s)
 
 
 def trace_id_from_session(session_id: str) -> str:

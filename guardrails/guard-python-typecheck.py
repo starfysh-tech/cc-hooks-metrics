@@ -39,7 +39,10 @@ def main():
     # Run ty from the edited file's own project root, not the session cwd —
     # otherwise editing a file in repo B from a session rooted in repo A
     # resolves imports against the wrong tree (false unresolved-import blocks).
-    project_root = os.path.dirname(os.path.abspath(file_path))
+    # Normalize the path first: a relative file_path would otherwise be
+    # re-resolved against the new cwd and silently skip the check.
+    file_path = os.path.abspath(file_path)
+    project_root = os.path.dirname(file_path)
     probe = project_root
     while True:
         if any(os.path.exists(os.path.join(probe, marker)) for marker in ("pyproject.toml", ".git")):

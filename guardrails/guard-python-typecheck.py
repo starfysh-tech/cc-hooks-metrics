@@ -36,13 +36,27 @@ def main():
     except AttributeError:
         user_site = ""
 
+    # Run ty from the edited file's own project root, not the session cwd —
+    # otherwise editing a file in repo B from a session rooted in repo A
+    # resolves imports against the wrong tree (false unresolved-import blocks).
+    project_root = os.path.dirname(os.path.abspath(file_path))
+    probe = project_root
+    while True:
+        if any(os.path.exists(os.path.join(probe, marker)) for marker in ("pyproject.toml", ".git")):
+            project_root = probe
+            break
+        parent = os.path.dirname(probe)
+        if parent == probe:
+            break  # filesystem root: fall back to the file's own directory
+        probe = parent
+
     try:
         cmd = ["ty", "check", file_path]
         if user_site:
             cmd = ["ty", "check", "--extra-search-path", user_site, file_path]
         result = subprocess.run(
             cmd,
-            capture_output=True, text=True, timeout=25,
+            capture_output=True, text=True, timeout=25, cwd=project_root,
         )
     except FileNotFoundError:
         print("guard-python-typecheck: ty not found — install with: brew install ty  OR  uv tool install ty", file=sys.stderr)

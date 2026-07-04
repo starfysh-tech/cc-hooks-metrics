@@ -670,7 +670,8 @@ GROUP BY repo ORDER BY SUM(duration_ms) DESC LIMIT 5
     # ── broken_hooks() ───────────────────────────────────────────────────────
 
     def broken_hooks(self) -> list[BrokenHook]:
-        rows = self._query("""
+        sem = _semantic_exit_placeholders()
+        rows = self._query(f"""
 WITH fails AS (
   SELECT step,
     COALESCE(NULLIF(TRIM(cmd),''), '(unknown)') AS cmd,
@@ -684,7 +685,10 @@ WITH fails AS (
 successes AS (
   SELECT step, MAX(ts) AS last_success
   FROM hook_metrics
-  WHERE exit_code = 0 AND ts > datetime('now', '-7 days')
+  WHERE ts > datetime('now', '-7 days') AND (
+    exit_code = 0 OR
+    (exit_code = 1 AND step IN ({sem}))
+  )
   GROUP BY step
 )
 SELECT f.step, f.cmd, f.cnt, f.last_fail, s.last_success

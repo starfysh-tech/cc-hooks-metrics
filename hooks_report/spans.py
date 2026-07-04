@@ -22,6 +22,38 @@ class Span:
     attributes: dict | None
     session_id: str = ""    # source session; used by OTLP export for root span grouping
 
+    def __post_init__(self) -> None:
+        """Validate span invariants at construction."""
+        # trace_id: exactly 32 lowercase hex digits
+        if not self._is_valid_hex_string(self.trace_id, 32):
+            raise ValueError(f"trace_id must be exactly 32 lowercase hex digits, got {self.trace_id!r}")
+
+        # span_id: exactly 16 lowercase hex digits
+        if not self._is_valid_hex_string(self.span_id, 16):
+            raise ValueError(f"span_id must be exactly 16 lowercase hex digits, got {self.span_id!r}")
+
+        # kind: must be in {1, 3}
+        if self.kind not in {1, 3}:
+            raise ValueError(f"kind must be in {{1, 3}}, got {self.kind!r}")
+
+        # status_code: must be in {1, 2}
+        if self.status_code not in {1, 2}:
+            raise ValueError(f"status_code must be in {{1, 2}}, got {self.status_code!r}")
+
+        # start_time_unix_nano: must be <= end_time_unix_nano
+        if self.start_time_unix_nano > self.end_time_unix_nano:
+            raise ValueError(
+                f"start_time_unix_nano ({self.start_time_unix_nano}) must be <= "
+                f"end_time_unix_nano ({self.end_time_unix_nano})"
+            )
+
+    @staticmethod
+    def _is_valid_hex_string(s: str, length: int) -> bool:
+        """Check if s is exactly 'length' lowercase hex digits."""
+        if not isinstance(s, str) or len(s) != length:
+            return False
+        return all(c in "0123456789abcdef" for c in s)
+
 
 def trace_id_from_session(session_id: str) -> str:
     """Deterministic 32-char hex trace_id from session_id."""
